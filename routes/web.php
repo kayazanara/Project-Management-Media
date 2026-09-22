@@ -25,8 +25,19 @@ Route::middleware(['auth'])->group(function () {
     // Dashboard dapat diakses oleh semua akun yang login
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // Project & Task (Akses baca umum untuk anggota yang login)
+    // ==========================================
+    // PROJECT & TASK (Akses baca umum untuk anggota yang login)
+    // ==========================================
+    // PENTING: Route statis '/projects/create' HARUS didaftarkan SEBELUM
+    // route dinamis '/projects/{id}', jika tidak maka Laravel akan
+    // menangkap "create" sebagai {id} dan menampilkan 404.
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
+
+    Route::get('/projects/create', [ProjectController::class, 'create'])
+        ->middleware('divisi.access:pembina')
+        ->name('projects.create');
+
+    // Route dinamis setelahnya
     Route::get('/projects/{id}', [ProjectController::class, 'show'])->name('projects.show');
     Route::post('/projects/{id}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
     Route::patch('/tasks/{id}/toggle', [ProjectController::class, 'toggleTask'])->name('tasks.toggle');
@@ -44,8 +55,8 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/team/{id}', [TeamController::class, 'update'])->name('team.update');
         Route::delete('/team/{id}', [TeamController::class, 'destroy'])->name('team.destroy');
 
-        // Project Management (Full Control: Create, Edit, Delete)
-        Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');
+        // Project Management (Store / Edit / Update / Delete)
+        // Catatan: '/projects/create' sudah dipindahkan ke atas agar tidak bentrok
         Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
         Route::get('/projects/{id}/edit', [ProjectController::class, 'edit'])->name('projects.edit');
         Route::put('/projects/{id}', [ProjectController::class, 'update'])->name('projects.update');
