@@ -32,6 +32,7 @@
                             <th>No</th>
                             <th>Nama</th>
                             <th>Email</th>
+                            <th>No. WhatsApp</th>
                             <th>Role / Peran</th>
                             <th>Divisi</th>
                             <th>Status</th>
@@ -44,6 +45,15 @@
                             <td>{{ $index + 1 }}</td>
                             <td>{{ $user->name }}</td>
                             <td>{{ $user->email }}</td>
+                            <td>
+                                @if($user->phone)
+                                    <a href="https://wa.me/{{ $user->phone }}" target="_blank" class="text-success">
+                                        <i class="fab fa-whatsapp mr-1"></i>{{ $user->phone }}
+                                    </a>
+                                @else
+                                    <span class="text-muted font-italic"><i class="fas fa-minus-circle mr-1"></i>Belum diisi</span>
+                                @endif
+                            </td>
                             <td>
                                 @if($user->role == 'Ustadz')
                                     <span class="badge badge-success">Ustadz</span>

@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -15,7 +14,11 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'division', // Pastikan kolom divisi atau atribut lainnya sudah ada
+        'role',       // ← tambah
+        'division',
+        'status',     // ← tambah
+        'avatar',     // ← tambah
+        'phone',      // ← tambah
     ];
 
     protected $hidden = [
@@ -32,10 +35,26 @@ class User extends Authenticatable
     }
 
     /**
-     * Tambahkan relasi ini agar User bisa mengakses task yang ditugaskan kepadanya.
+     * Task yang ditugaskan ke user ini
      */
     public function tasks()
     {
         return $this->hasMany(ProjectTask::class, 'assigned_to');
+    }
+
+    /**
+     * Project yang diikuti user ini (many-to-many)
+     */
+    public function projects()
+    {
+        return $this->belongsToMany(Project::class, 'project_user');
+    }
+
+    /**
+     * Accessor: nomor WA siap pakai untuk WAHA
+     */
+    public function getWhatsappChatIdAttribute(): ?string
+    {
+        return \App\Helpers\PhoneHelper::toChatId($this->phone);
     }
 }

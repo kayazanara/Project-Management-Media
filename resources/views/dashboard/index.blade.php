@@ -127,17 +127,36 @@
                                 }
                             @endphp
                             <div class="list-group-item d-flex justify-content-between align-items-center px-3 mb-2 rounded shadow-sm" style="{{ $rankStyle }}">
-                                <div>
-                                    <span class="font-weight-bold mr-2 
-                                        @if($index == 0) text-warning 
-                                        @elseif($index == 1) text-secondary 
-                                        @elseif($index == 2) text-danger 
-                                        @else text-primary @endif">
-                                        #{{ $index + 1 }}
-                                    </span>
-                                    <span class="font-weight-bold text-dark">{{ $member->name }}</span>
-                                    <br><small class="text-muted">{{ $member->division ?? 'Tanpa Divisi' }}</small>
+                                <div class="d-flex align-items-center">
+                                    {{-- Avatar / Foto Profil --}}
+                                    @if($member->avatar)
+                                        <img src="{{ asset('storage/avatars/' . $member->avatar) }}"
+                                             alt="{{ $member->name }}"
+                                             class="rounded-circle mr-3 shadow-sm"
+                                             style="width: 42px; height: 42px; object-fit: cover; border: 2px solid #fff;">
+                                    @else
+                                        {{-- Fallback: inisial nama --}}
+                                        <div class="rounded-circle mr-3 d-flex align-items-center justify-content-center shadow-sm"
+                                             style="width: 42px; height: 42px; background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; font-weight: 700; font-size: 15px; border: 2px solid #fff;">
+                                            {{ strtoupper(substr($member->name, 0, 2)) }}
+                                        </div>
+                                    @endif
+
+                                    {{-- Nama & Divisi --}}
+                                    <div>
+                                        <span class="font-weight-bold mr-1 
+                                            @if($index == 0) text-warning 
+                                            @elseif($index == 1) text-secondary 
+                                            @elseif($index == 2) text-danger 
+                                            @else text-primary @endif">
+                                            #{{ $index + 1 }}
+                                        </span>
+                                        <span class="font-weight-bold text-dark">{{ $member->name }}</span>
+                                        <br><small class="text-muted">{{ $member->division ?? 'Tanpa Divisi' }}</small>
+                                    </div>
                                 </div>
+
+                                {{-- Badge Task Selesai --}}
                                 <span class="badge badge-success badge-pill p-2" style="font-size: 12px;">
                                     {{ $member->tasks_count }} Task Selesai
                                 </span>

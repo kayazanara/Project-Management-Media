@@ -44,6 +44,19 @@
                 </div>
 
                 <div class="form-group">
+                    <label><strong>Nomor WhatsApp</strong> <small class="text-muted">(opsional)</small></label>
+                    <input type="text" name="phone" class="form-control @error('phone') is-invalid @enderror"
+                        placeholder="Contoh: 08123456789 atau 628123456789"
+                        value="{{ old('phone') }}">
+                    @error('phone')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <small class="form-text text-muted">
+                        <i class="fas fa-info-circle"></i> Format bebas — akan otomatis dinormalisasi ke format <code>628xxx</code>.
+                    </small>
+                </div>
+
+                <div class="form-group">
                     <label><strong>Password</strong> <span class="text-danger">*</span></label>
                     <input type="password" name="password" class="form-control @error('password') is-invalid @enderror" required>
                     @error('password')

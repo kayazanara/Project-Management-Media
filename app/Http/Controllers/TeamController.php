@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
+use App\Helpers\PhoneHelper;
 use Illuminate\Support\Facades\Hash;
 
 class TeamController extends Controller
 {
-    // Menampilkan daftar anggota tim
     public function index()
     {
         $users = User::all();
@@ -21,7 +21,6 @@ class TeamController extends Controller
         return view('team.index', $data);
     }
 
-    // Menampilkan form tambah anggota
     public function create()
     {
         $data = [
@@ -30,16 +29,18 @@ class TeamController extends Controller
         return view('team.create', $data);
     }
 
-    // Menyimpan data anggota baru ke database
     public function store(Request $request)
     {
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6',
-            'role' => 'required',
+            'role' => 'required|in:Ustadz,Santri',
             'division' => 'nullable|string',
-            'status' => 'required'
+            'status' => 'required|in:Aktif,Non-Aktif',
+            'phone' => 'nullable|string|max:20',
+        ], [
+            'phone.max' => 'Nomor WhatsApp terlalu panjang (maks 20 karakter).',
         ]);
 
         User::create([
@@ -49,12 +50,12 @@ class TeamController extends Controller
             'role' => $request->role,
             'division' => $request->division,
             'status' => $request->status,
+            'phone' => PhoneHelper::normalize($request->phone),
         ]);
 
         return redirect()->route('team.index')->with('success', 'Anggota tim berhasil ditambahkan!');
     }
 
-    // Menampilkan form edit anggota
     public function edit($id)
     {
         $user = User::findOrFail($id);
@@ -65,7 +66,6 @@ class TeamController extends Controller
         return view('team.edit', $data);
     }
 
-    // Mengupdate data anggota
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
@@ -73,9 +73,10 @@ class TeamController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $id,
-            'role' => 'required',
+            'role' => 'required|in:Ustadz,Santri',
             'division' => 'nullable|string',
-            'status' => 'required'
+            'status' => 'required|in:Aktif,Non-Aktif',
+            'phone' => 'nullable|string|max:20',
         ]);
 
         $user->name = $request->name;
@@ -86,12 +87,12 @@ class TeamController extends Controller
         $user->role = $request->role;
         $user->division = $request->division;
         $user->status = $request->status;
+        $user->phone = PhoneHelper::normalize($request->phone);
         $user->save();
 
         return redirect()->route('team.index')->with('success', 'Data anggota tim berhasil diupdate!');
     }
 
-    // Menghapus anggota tim
     public function destroy($id)
     {
         $user = User::findOrFail($id);
