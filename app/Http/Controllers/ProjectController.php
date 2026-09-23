@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\ProjectTask;
+use App\Events\ProjectCreated;
 
 class ProjectController extends Controller
 {
@@ -87,6 +88,9 @@ class ProjectController extends Controller
         ]);
 
         $project->users()->attach($request->user_ids);
+
+        // 🔔 Kirim notifikasi WA ke semua anggota project (via event → listener → job)
+        ProjectCreated::dispatch($project);
 
         return redirect()->route('projects.index')->with('success', 'Project baru berhasil ditambahkan!');
     }
