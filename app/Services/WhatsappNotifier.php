@@ -114,77 +114,106 @@ class WhatsappNotifier
     /**
      * Template: Project Baru
      */
-    public function projectCreatedTemplate(string $nama, string $namaProject, string $startDate, string $deadline, string $listAnggota, string $brief, int $projectId): string
-    {
+    public function projectCreatedTemplate(
+        string $nama,
+        string $namaProject,
+        string $startDate,
+        string $deadline,
+        string $listAnggota,
+        string $brief,
+        int $projectId
+    ): string {
         $url = url("/projects/{$projectId}");
 
-        return "🎯 *Project Baru*\n\n"
+        return "🎯 *Ada Project Baru Nih!*\n\n"
             . "Assalamu'alaikum, {$nama} 👋\n\n"
-            . "Ada project baru yang perlu kamu kerjakan bersama tim:\n\n"
+            . "Ada project baru dari *Mas Khoir* nih. Kamu termasuk dalam tim yang akan mengerjakannya.\n\n"
             . "📋 *{$namaProject}*\n"
             . "🗓️ Mulai: {$startDate}\n"
             . "⏰ Deadline: {$deadline}\n"
             . "👥 Tim: {$listAnggota}\n\n"
             . "📝 *Brief*\n{$brief}\n\n"
-            . "Yuk, cek detail project untuk melihat *task, pembagian tugas, dan instruksi pengerjaan*:\n\n"
-            . "🔗 {$url}\n\n"
-            . "Jangan lupa cek project-nya sebelum mulai mengerjakan. Semangat! 🚀";
+            . "Sebelum mulai, coba cek dulu detail project-nya ya. Di sana sudah ada pembagian tugas, brief, dan hal-hal yang perlu diperhatikan.\n\n"
+            . "🔗 *Cek Detail Project*\n{$url}\n\n"
+            . "Semoga pengerjaannya lancar dan hasilnya sesuai yang kita harapkan.\n\n"
+            . "*— Mas Khoir*";
     }
 
     /**
      * Template: Reminder H-3
      */
-    public function reminderH3Template(string $nama, string $namaProject, string $deadline, string $listAnggota, int $progress, int $projectId): string
-    {
+    public function reminderH3Template(
+        string $nama,
+        string $namaProject,
+        string $deadline,
+        string $listAnggota,
+        int $progress,
+        int $projectId
+    ): string {
         $url = url("/projects/{$projectId}");
 
-        return "⏳ *Reminder Project — H-3*\n\n"
+        return "⏳ *Wah, Tinggal 3 Hari!*\n\n"
             . "Assalamu'alaikum, {$nama} 👋\n\n"
-            . "Mengingatkan bahwa project berikut akan segera memasuki deadline:\n\n"
+            . "Mengingatkan sedikit untuk project:\n\n"
             . "📋 *{$namaProject}*\n"
             . "⏰ Deadline: *{$deadline}*\n"
             . "👥 Tim: {$listAnggota}\n\n"
-            . "📝 *Progress saat ini*\n{$progress}%\n\n"
-            . "Masih ada waktu *3 hari* untuk menyelesaikannya.\n\n"
-            . "Yuk, cek kembali task dan progress project agar tidak ada yang tertinggal.\n\n"
-            . "🔗 {$url}";
+            . "📊 Progress sekarang: *{$progress}%*\n\n"
+            . "Waktu kita tinggal *3 hari* lagi. Kalau masih ada task yang belum selesai, coba mulai dibereskan dari sekarang supaya nanti tidak menumpuk di akhir.\n\n"
+            . "🔗 *Cek Project*\n{$url}\n\n"
+            . "Yuk, dicek lagi bagian masing-masing.\n\n"
+            . "*— Mas Khoir*";
     }
 
     /**
      * Template: Reminder H-1
      */
-    public function reminderH1Template(string $nama, string $namaProject, string $deadline, string $listAnggota, int $progress, int $projectId): string
-    {
+    public function reminderH1Template(
+        string $nama,
+        string $namaProject,
+        string $deadline,
+        string $listAnggota,
+        int $progress,
+        int $projectId
+    ): string {
         $url = url("/projects/{$projectId}");
 
-        return "⚠️ *Deadline Besok!*\n\n"
+        return "⚠️ *Besok Sudah Deadline!*\n\n"
             . "Assalamu'alaikum, {$nama} 👋\n\n"
-            . "Project ini akan memasuki deadline *besok*:\n\n"
+            . "Wah, project ini besok sudah masuk deadline:\n\n"
             . "📋 *{$namaProject}*\n"
             . "⏰ Deadline: *{$deadline}*\n"
             . "👥 Tim: {$listAnggota}\n\n"
-            . "📊 *Progress saat ini*\n{$progress}%\n\n"
-            . "Pastikan task kamu sudah selesai dan tidak ada pekerjaan yang tertinggal.\n\n"
-            . "🔗 Cek project:\n{$url}\n\n"
-            . "*Jangan tunggu sampai deadline lewat.*";
+            . "📊 Progress sekarang: *{$progress}%*\n\n"
+            . "Kalau masih ada yang belum selesai, hari ini waktunya dibereskan. Coba cek lagi task masing-masing dan pastikan tidak ada bagian yang terlewat.\n\n"
+            . "🔗 *Cek Project*\n{$url}\n\n"
+            . "Semoga hari ini bisa kita tuntaskan dengan baik.\n\n"
+            . "*— Mas Khoir*";
     }
 
     /**
      * Template: Overdue
      */
-    public function overdueTemplate(string $nama, string $namaProject, string $deadline, int $progress, string $listAnggota, int $projectId): string
-    {
+    public function overdueTemplate(
+        string $nama,
+        string $namaProject,
+        string $deadline,
+        int $progress,
+        string $listAnggota,
+        int $projectId
+    ): string {
         $url = url("/projects/{$projectId}");
 
-        return "🚨 *Project Overdue*\n\n"
+        return "🚨 *Project Belum Selesai*\n\n"
             . "Assalamu'alaikum, {$nama}.\n\n"
-            . "Project berikut sudah melewati deadline:\n\n"
+            . "Project ini ternyata sudah melewati deadline:\n\n"
             . "📋 *{$namaProject}*\n"
             . "⏰ Deadline: *{$deadline}*\n"
             . "📊 Progress: *{$progress}%*\n"
             . "👥 Tim: {$listAnggota}\n\n"
-            . "Project masih belum selesai. Mohon segera cek task yang masih terbuka dan lanjutkan pengerjaannya.\n\n"
-            . "🔗 *Buka Project:*\n{$url}\n\n"
-            . "Mohon segera ditindaklanjuti.";
+            . "Kalau masih ada task yang belum selesai, yuk segera dicek dan dibereskan. Jangan sampai project-nya terlalu lama tertahan.\n\n"
+            . "🔗 *Cek Project*\n{$url}\n\n"
+            . "Kalau ada kendala dalam pengerjaannya, jangan dipendam sendiri. Sampaikan supaya bisa kita cari solusinya.\n\n"
+            . "*— Mas Khoir*";
     }
 }
