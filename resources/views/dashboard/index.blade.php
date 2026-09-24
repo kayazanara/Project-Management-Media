@@ -343,6 +343,95 @@
         </div>
     </div>
 
+    <!-- ================================================= -->
+    <!-- 4. ⭐ BARU: Task Selesai (Group by Day)           -->
+    <!-- ================================================= -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-success">
+                        <i class="fas fa-check-double mr-1"></i> Task Selesai (Periode Ini)
+                    </h6>
+                    <span class="badge badge-success badge-pill px-3 py-1">
+                        {{ $totalCompletedTasks }} Task
+                    </span>
+                </div>
+                <div class="card-body" style="height: 600px; overflow-y: auto; background-color: #f8f9fa;">
+
+                    @forelse($completedTasksByDay as $day)
+                        {{-- Card per hari --}}
+                        <div class="mb-3 bg-white rounded shadow-sm" style="border-left: 4px solid #1cc88a;">
+                            {{-- Header Hari --}}
+                            <div class="px-3 py-2 d-flex justify-content-between align-items-center border-bottom"
+                                 style="background-color: #f0f8f5;">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-calendar-day text-success mr-2"></i>
+                                    <strong class="text-dark" style="font-size: 14px;">
+                                        {{ $day['date_formatted'] }}
+                                    </strong>
+                                </div>
+                                <span class="badge badge-success badge-pill px-2 py-1">
+                                    {{ $day['count'] }} Task
+                                </span>
+                            </div>
+
+                            {{-- List Task --}}
+                            <div class="p-2">
+                                @foreach($day['tasks'] as $task)
+                                    <div class="d-flex justify-content-between align-items-start px-2 py-2 mb-1 rounded"
+                                         style="transition: all 0.15s;"
+                                         onmouseover="this.style.backgroundColor='#f0f3ff';"
+                                         onmouseout="this.style.backgroundColor='transparent';">
+
+                                        <div class="d-flex align-items-start flex-grow-1" style="min-width: 0;">
+                                            <i class="fas fa-check-circle text-success mt-1 mr-2" style="flex-shrink: 0;"></i>
+                                            <div style="min-width: 0; flex: 1;">
+                                                <div class="font-weight-bold text-dark text-truncate" style="font-size: 13.5px;">
+                                                    {{ $task->title }}
+                                                </div>
+                                                <small class="text-muted d-block">
+                                                    <i class="fas fa-folder-open mr-1" style="font-size: 10px;"></i>
+                                                    <a href="{{ route('projects.show', $task->project_id) }}" class="text-muted">
+                                                        {{ $task->project->name ?? '-' }}
+                                                    </a>
+                                                </small>
+
+                                                {{-- Kontributor --}}
+                                                @if($task->contributors->count() > 0)
+                                                    <div class="mt-1">
+                                                        @foreach($task->contributors as $contributor)
+                                                            <span class="badge badge-light border mr-1" style="font-size: 10px;">
+                                                                <i class="fas fa-user text-success mr-1"></i>{{ $contributor->name }}
+                                                            </span>
+                                                        @endforeach
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        </div>
+
+                                        {{-- Jam Selesai --}}
+                                        <span class="badge badge-light border text-muted ml-2" style="font-size: 11px; white-space: nowrap; flex-shrink: 0;">
+                                            <i class="fas fa-clock mr-1"></i>
+                                            {{ \Carbon\Carbon::parse($task->completed_at)->format('H:i') }}
+                                        </span>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @empty
+                        <div class="text-center py-5">
+                            <i class="fas fa-inbox fa-4x text-gray-300 mb-3"></i>
+                            <p class="text-muted mb-0">Belum ada task yang diselesaikan pada periode ini.</p>
+                            <small class="text-muted">Coba ubah filter waktu di atas.</small>
+                        </div>
+                    @endforelse
+
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Script Chart.js -->
     <script src="{{ asset('sb-admin-2/vendor/chart.js/Chart.min.js') }}"></script>
     <script>

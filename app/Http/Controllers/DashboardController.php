@@ -45,10 +45,10 @@ class DashboardController extends Controller
         $totalProjects = Project::count();
         $activeProjectsCount = Project::where('status', '!=', 'Completed')->count();
         $today = Carbon::today()->toDateString();
-        
+
         $tasksTodayCount = ProjectTask::whereDate('task_date', $today)->count();
         $tasksCompletedTodayCount = ProjectTask::where('status', 'Completed')->whereDate('completed_at', $today)->count();
-        $tasksOverdueCount = ProjectTask::where('status', '!=', 'Completed')->whereHas('project', function($q) {
+        $tasksOverdueCount = ProjectTask::where('status', '!=', 'Completed')->whereHas('project', function ($q) {
             $q->where('deadline', '<', now()->toDateString());
         })->count();
 
@@ -68,9 +68,9 @@ class DashboardController extends Controller
         foreach ($divisions as $divName) {
             $keyword = trim(str_replace('Tim', '', $divName));
             $memIds = User::where('division', 'like', '%' . $keyword . '%')->pluck('id');
-            
+
             $divMembersCount = $memIds->count();
-            $divActiveProjects = Project::whereHas('users', function($q) use ($memIds) {
+            $divActiveProjects = Project::whereHas('users', function ($q) use ($memIds) {
                 $q->whereIn('users.id', $memIds);
             })->where('status', '!=', 'Completed')->count();
 
@@ -87,7 +87,7 @@ class DashboardController extends Controller
         // 6. Data untuk Chart Task Berdasarkan Rentang Waktu yang Dipilih
         $chartLabels = [];
         $chartData = [];
-        
+
         $period = Carbon::parse($start)->daysUntil($end);
         foreach ($period as $date) {
             $chartLabels[] = $date->format('d M');
@@ -96,7 +96,7 @@ class DashboardController extends Controller
                 ->count();
         }
 
-        // 7. Peringkat Anggota (Leaderboard) Berdasarkan Task Selesai sebagai KONTRIBUTOR
+        // 7. Peringkat Anggota (Leaderboard)
         $topMembers = User::withCount(['contributedTasks' => function ($query) use ($start, $end) {
             $query->where('status', 'Completed')
                 ->whereBetween('completed_at', [$start, $end]);
@@ -104,6 +104,31 @@ class DashboardController extends Controller
             ->orderBy('contributed_tasks_count', 'desc')
             ->orderBy('name', 'asc')
             ->get();
+
+        // ==========================================
+        // 8. ⭐ BARU: Task Selesai (Grouped by Day)
+        // ==========================================
+        $completedTasksRaw = ProjectTask::where('status', 'Completed')
+            ->whereBetween('completed_at', [$start, $end])
+            ->with(['project', 'assignedUser', 'contributors'])
+            ->orderBy('completed_at', 'desc')
+            ->get();
+
+        // Group by tanggal (Y-m-d)
+        $completedTasksByDay = $completedTasksRaw
+            ->groupBy(fn($task) => Carbon::parse($task->completed_at)->format('Y-m-d'))
+            ->map(function ($tasks, $date) {
+                return [
+                    'date' => $date,
+                    'date_formatted' => Carbon::parse($date)->translatedFormat('l, d F Y'),
+                    'day_name' => Carbon::parse($date)->translatedFormat('l'),
+                    'tasks' => $tasks,
+                    'count' => $tasks->count(),
+                ];
+            })
+            ->values();
+
+        $totalCompletedTasks = $completedTasksRaw->count();
 
         $data = [
             'title' => 'Dashboard Utama',
@@ -120,6 +145,8 @@ class DashboardController extends Controller
             'chartLabels' => $chartLabels,
             'chartData' => $chartData,
             'topMembers' => $topMembers,
+            'completedTasksByDay' => $completedTasksByDay,
+            'totalCompletedTasks' => $totalCompletedTasks,
             'filter' => $filter,
             'startDate' => $startDate,
             'endDate' => $endDate,
