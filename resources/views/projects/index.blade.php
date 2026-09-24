@@ -107,7 +107,7 @@
                             <th>Deadline</th>
                             <th>Status</th>
                             <th>Link Referensi</th>
-                            <th>Brief</th>
+                            <th style="min-width: 150px;">Progress</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -145,7 +145,23 @@
                                     -
                                 @endif
                             </td>
-                            <td>{{ $project->brief ?? '-' }}</td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="progress flex-grow-1 mr-2" style="height: 22px;">
+                                        <div class="progress-bar bg-{{ $project->progress_color }}"
+                                             role="progressbar"
+                                             style="width: {{ $project->progress }}%;"
+                                             aria-valuenow="{{ $project->progress }}"
+                                             aria-valuemin="0"
+                                             aria-valuemax="100">
+                                            {{ $project->progress }}%
+                                        </div>
+                                    </div>
+                                </div>
+                                <small class="text-muted">
+                                    {{ $project->completed_tasks_count ?? 0 }}/{{ $project->total_tasks_count ?? 0 }} task
+                                </small>
+                            </td>
                             <td>
                                 <a href="{{ route('projects.show', $project->id) }}" class="btn btn-info btn-sm" title="Detail & Task">
                                     <i class="fas fa-eye"></i>
@@ -189,6 +205,7 @@
                             <th>Mulai</th>
                             <th>Deadline</th>
                             <th>Status</th>
+                            <th>Progress</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -207,6 +224,18 @@
                             <td>
                                 <span class="badge badge-success">Completed</span>
                             </td>
+                            <td>
+                                <div class="progress" style="height: 22px;">
+                                    <div class="progress-bar bg-{{ $compProject->progress_color }}"
+                                         role="progressbar"
+                                         style="width: {{ $compProject->progress }}%;"
+                                         aria-valuenow="{{ $compProject->progress }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100">
+                                        {{ $compProject->progress }}%
+                                    </div>
+                                </div>
+                            </td>
                             <td class="text-center">
                                 <a href="{{ route('projects.show', $compProject->id) }}" class="btn btn-info btn-sm" title="Lihat Detail">
                                     <i class="fas fa-eye"></i> Buka Project
@@ -215,7 +244,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="7" class="text-center text-muted">Belum ada proyek yang selesai.</td>
+                            <td colspan="8" class="text-center text-muted">Belum ada proyek yang selesai.</td>
                         </tr>
                         @endforelse
                     </tbody>
