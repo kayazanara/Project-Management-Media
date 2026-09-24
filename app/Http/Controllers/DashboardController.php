@@ -96,13 +96,14 @@ class DashboardController extends Controller
                 ->count();
         }
 
-        // 7. Top Anggota (Leaderboard) Berdasarkan Task Selesai dalam Rentang Waktu Terpilih
-        $topMembers = User::withCount(['tasks' => function($query) use ($start, $end) {
+        // 7. Peringkat Anggota (Leaderboard) Berdasarkan Task Selesai sebagai KONTRIBUTOR
+        $topMembers = User::withCount(['contributedTasks' => function ($query) use ($start, $end) {
             $query->where('status', 'Completed')
                 ->whereBetween('completed_at', [$start, $end]);
-        }])->orderBy('tasks_count', 'desc')
-        ->orderBy('name', 'asc')
-        ->get();
+        }])
+            ->orderBy('contributed_tasks_count', 'desc')
+            ->orderBy('name', 'asc')
+            ->get();
 
         $data = [
             'title' => 'Dashboard Utama',

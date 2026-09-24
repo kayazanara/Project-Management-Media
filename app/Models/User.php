@@ -14,11 +14,11 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',       // ← tambah
+        'role',
         'division',
-        'status',     // ← tambah
-        'avatar',     // ← tambah
-        'phone',      // ← tambah
+        'status',
+        'avatar',
+        'phone',
     ];
 
     protected $hidden = [
@@ -35,11 +35,25 @@ class User extends Authenticatable
     }
 
     /**
-     * Task yang ditugaskan ke user ini
+     * Task yang ditugaskan ke user ini (PIC / assigned_to)
      */
     public function tasks()
     {
         return $this->hasMany(ProjectTask::class, 'assigned_to');
+    }
+
+    /**
+     * Task di mana user ini menjadi KONTRIBUTOR (untuk hitung poin)
+     * Relasi many-to-many via tabel pivot project_task_contributors
+     */
+    public function contributedTasks()
+    {
+        return $this->belongsToMany(
+            ProjectTask::class,
+            'project_task_contributors',
+            'user_id',
+            'project_task_id'
+        )->withTimestamps();
     }
 
     /**

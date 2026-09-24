@@ -225,20 +225,49 @@ class ProjectController extends Controller
     }
 
     // Mengubah status task (Pending <-> Completed) sekaligus memperbarui progress otomatis
-    public function toggleTask($id)
+        /**
+     * Mengubah status task (Pending <-> Completed)
+     * - Saat Completed: wajib pilih kontributor (multi-select)
+     * - Saat Reopen (Completed → Pending): kontributor tetap tersimpan
+     */
+    public function toggleTask(Request $request, $id)
     {
         $task = ProjectTask::findOrFail($id);
-        
+
+        // ============================================
+        // KASUS 1: REOPEN (Completed → Pending)
+        // Kontributor TIDAK dihapus
+        // ============================================
         if ($task->status == 'Completed') {
             $task->status = 'Pending';
             $task->completed_at = null;
-        } else {
-            $task->status = 'Completed';
-            $task->completed_at = now();
+            $task->save();
+
+            return redirect()->back()->with('success', 'Task dibuka kembali. Kontributor tetap tersimpan.');
         }
+
+        // ============================================
+        // KASUS 2: COMPLETE (Pending → Completed)
+        // Wajib pilih kontributor
+        // ============================================
+        $request->validate([
+            'contributors' => 'required|array|min:1',
+            'contributors.*' => 'exists:users,id',
+        ], [
+            'contributors.required' => 'Pilih minimal 1 kontributor untuk task ini.',
+            'contributors.min' => 'Pilih minimal 1 kontributor untuk task ini.',
+        ]);
+
+        $task->status = 'Completed';
+        $task->completed_at = now();
         $task->save();
 
-        return redirect()->back()->with('success', 'Status task berhasil diperbarui!');
+        // Sync kontributor (yang tidak dicentang akan dihapus, yang dicentang disimpan)
+        $task->contributors()->sync($request->contributors);
+
+        $names = User::whereIn('id', $request->contributors)->pluck('name')->implode(', ');
+
+        return redirect()->back()->with('success', "Task selesai! Kontributor: {$names}");
     }
 
     // Menghapus task
