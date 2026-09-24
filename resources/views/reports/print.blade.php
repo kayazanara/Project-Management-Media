@@ -131,12 +131,13 @@
         <table>
             <thead>
                 <tr>
-                    <th width="8%">No</th>
-                    <th width="27%">Nama Divisi</th>
-                    <th width="20%">Project Dirilis</th>
-                    <th width="15%">Selesai (Pekan Ini)</th>
-                    <th width="15%">Selesai (Pekan Lalu)</th>
-                    <th width="15%">Overdue / Tertunda</th>
+                    <th width="5%">No</th>
+                    <th width="20%">Nama Divisi</th>
+                    <th width="13%">Project Baru</th>
+                    <th width="15%">Task Selesai<br><small style="font-weight: normal;">(Pekan Ini)</small></th>
+                    <th width="15%">Task Selesai<br><small style="font-weight: normal;">(Pekan Lalu)</small></th>
+                    <th width="14%">Project Completed</th>
+                    <th width="13%">Overdue</th>
                 </tr>
             </thead>
             <tbody>
@@ -145,8 +146,9 @@
                     <td class="text-center">{{ $index + 1 }}</td>
                     <td class="font-weight-bold">{{ $div['name'] }}</td>
                     <td class="text-center">{{ $div['assigned'] }} Project</td>
-                    <td class="text-center text-success">{{ $div['completed'] }} Selesai</td>
-                    <td class="text-center">{{ $div['prev_completed'] }} Selesai</td>
+                    <td class="text-center text-success">{{ $div['completed'] }} Task</td>
+                    <td class="text-center">{{ $div['prev_completed'] }} Task</td>
+                    <td class="text-center">{{ $div['completed_projects'] }} Project</td>
                     <td class="text-center text-danger">{{ $div['overdue'] }} Overdue</td>
                 </tr>
                 @endforeach

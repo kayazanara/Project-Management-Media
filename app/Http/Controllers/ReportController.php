@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\DailyReport;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -32,104 +33,150 @@ class ReportController extends Controller
             'manager_name' => 'required|string',
         ]);
 
-        $startDate = $request->start_date;
-        $endDate = $request->end_date;
+        // =============================================
+        // ⭐ FIX #3: Pakai startOfDay & endOfDay
+        // =============================================
+        $start = Carbon::parse($request->start_date)->startOfDay();
+        $end = Carbon::parse($request->end_date)->endOfDay();
+
+        $prevStart = Carbon::parse($request->start_date)->subWeek()->startOfDay();
+        $prevEnd = Carbon::parse($request->end_date)->subWeek()->endOfDay();
+
+        $startDate = $start->format('Y-m-d');
+        $endDate = $end->format('Y-m-d');
         $pjName = $request->pj_name;
         $managerName = $request->manager_name;
 
-        // Rentang pekan sebelumnya untuk perbandingan
-        $prevStartDate = Carbon::parse($startDate)->subWeek()->format('Y-m-d');
-        $prevEndDate = Carbon::parse($endDate)->subWeek()->format('Y-m-d');
-
-        // 1. Total Anggota & Anggota Aktif
+        // =============================================
+        // ⭐ FIX #1: Anggota Aktif pakai KONTRIBUTOR (pivot)
+        // =============================================
         $totalMembers = User::count();
-        $activeMembersCount = ProjectTask::where('status', 'Completed')
-            ->whereBetween('updated_at', [$startDate, $endDate])
-            ->whereNotNull('user_id')
-            ->distinct('user_id')
-            ->count('user_id');
 
-        // 2. Konten Terposting Pekan Ini (Diubah dari 'Ready' menjadi 'Uploaded')
+        $activeMemberIds = DB::table('project_task_contributors')
+            ->join('project_tasks', 'project_task_contributors.project_task_id', '=', 'project_tasks.id')
+            ->where('project_tasks.status', 'Completed')
+            ->whereBetween('project_tasks.completed_at', [$start, $end])
+            ->distinct()
+            ->pluck('project_task_contributors.user_id')
+            ->unique();
+
+        $activeMembersCount = $activeMemberIds->count();
+
+        // =============================================
+        // ⭐ FIX: Content pakai `uploaded_at` (bukan updated_at)
+        // =============================================
         $postedContentsThisWeek = Content::where('status', 'Uploaded')
-            ->whereBetween('updated_at', [$startDate, $endDate])
-            ->count();
-            
-        $postedContentsPrevWeek = Content::where('status', 'Uploaded')
-            ->whereBetween('updated_at', [$prevStartDate, $prevEndDate])
+            ->whereBetween('uploaded_at', [$start, $end])
             ->count();
 
-        // 3. 4 Divisi Utama Sesuai PRD Sistem
+        $postedContentsPrevWeek = Content::where('status', 'Uploaded')
+            ->whereBetween('uploaded_at', [$prevStart, $prevEnd])
+            ->count();
+
+        // =============================================
+        // Loop per divisi
+        // =============================================
         $divisionList = ['Tim Lapangan', 'Tim Editing', 'Tim Broadcast', 'Tim AI Research'];
         $divisionPerformance = [];
 
         foreach ($divisionList as $divName) {
             $cleanDivName = str_replace('Tim ', '', $divName);
-            $userIdsInDiv = User::where('divisi', 'LIKE', "%{$divName}%")
-                ->orWhere('divisi', 'LIKE', "%{$cleanDivName}%")
-                ->orWhere('division', 'LIKE', "%{$divName}%")
-                ->orWhere('division', 'LIKE', "%{$cleanDivName}%")
+
+            // ⭐ FIX #2: Pakai kolom `division` (bukan `divisi`)
+            $memberIds = User::where(function ($q) use ($divName, $cleanDivName) {
+                    $q->where('division', 'like', "%{$cleanDivName}%")
+                      ->orWhere('division', 'like', "%{$divName}%");
+                })
                 ->pluck('id');
 
-            $projectIds = \DB::table('project_user')->whereIn('user_id', $userIdsInDiv)->pluck('project_id');
+            // Project yang melibatkan anggota divisi ini
+            $projectIds = DB::table('project_user')
+                ->whereIn('user_id', $memberIds)
+                ->pluck('project_id')
+                ->unique();
 
-            // Project yang dirilis / dibuat di pekan itu (murni data riil)
-            $assignedThisWeek = Project::whereIn('id', $projectIds)
-                ->whereBetween('created_at', [$startDate, $endDate])
+            // ==========================================
+            // Project Dirilis = project BARU yang dibuat di periode
+            // ==========================================
+            $projectsCreatedThisWeek = Project::whereIn('id', $projectIds)
+                ->whereBetween('created_at', [$start, $end])
                 ->count();
 
-            // Project selesai (Completed) pekan ini
-            $completedThisWeek = Project::whereIn('id', $projectIds)
+            // ==========================================
+            // ⭐ FIX #4: Task Selesai pakai `completed_at` + KONTRIBUTOR
+            // ==========================================
+            $completedTasksThisWeek = ProjectTask::where('status', 'Completed')
+                ->whereBetween('completed_at', [$start, $end])
+                ->whereHas('contributors', function ($q) use ($memberIds) {
+                    $q->whereIn('users.id', $memberIds);
+                })
+                ->distinct('project_tasks.id')
+                ->count('project_tasks.id');
+
+            $completedTasksPrevWeek = ProjectTask::where('status', 'Completed')
+                ->whereBetween('completed_at', [$prevStart, $prevEnd])
+                ->whereHas('contributors', function ($q) use ($memberIds) {
+                    $q->whereIn('users.id', $memberIds);
+                })
+                ->distinct('project_tasks.id')
+                ->count('project_tasks.id');
+
+            // ==========================================
+            // Project Completed pakai `completed_at`
+            // ==========================================
+            $completedProjectsThisWeek = Project::whereIn('id', $projectIds)
                 ->where('status', 'Completed')
-                ->whereBetween('updated_at', [$startDate, $endDate])
+                ->whereBetween('completed_at', [$start, $end])
                 ->count();
 
-            // Project selesai pekan lalu
-            $completedPrevWeek = Project::whereIn('id', $projectIds)
+            $completedProjectsPrevWeek = Project::whereIn('id', $projectIds)
                 ->where('status', 'Completed')
-                ->whereBetween('updated_at', [$prevStartDate, $prevEndDate])
+                ->whereBetween('completed_at', [$prevStart, $prevEnd])
                 ->count();
 
-            // Overdue spesifik
+            // ==========================================
+            // ⭐ FIX #6: Overdue di-filter hanya yang deadline dalam periode
+            //           (kalau mau semua overdue, ganti jadi tanpa filter tanggal)
+            // ==========================================
             $overdue = Project::whereIn('id', $projectIds)
-                ->where(function($q) {
-                    $q->where('status', 'Overdue')
-                      ->orWhere(function($sub) {
-                          $sub->where('status', '!=', 'Completed')
-                              ->where('deadline', '<', Carbon::now());
-                      });
-                })->count();
+                ->where('status', '!=', 'Completed')
+                ->where('deadline', '<', $end->toDateString())
+                ->count();
 
-            // Ambil data kendala riil dari tabel daily_reports pada pekan ini
-            $latestReport = DailyReport::whereBetween('report_date', [$startDate, $endDate])
-                ->where(function($q) use ($divName, $cleanDivName) {
-                    $q->where('division', 'LIKE', "%{$divName}%")
-                      ->orWhere('division', 'LIKE', "%{$cleanDivName}%");
+            // ==========================================
+            // Kendala dari daily_reports
+            // ==========================================
+            $latestReport = DailyReport::whereBetween('report_date', [$start, $end])
+                ->where(function ($q) use ($divName, $cleanDivName) {
+                    $q->where('division', 'like', "%{$divName}%")
+                      ->orWhere('division', 'like', "%{$cleanDivName}%");
                 })
                 ->orderBy('report_date', 'desc')
                 ->first();
 
-            $issues = ($latestReport && !empty(trim($latestReport->problems))) 
-                ? $latestReport->problems 
+            $issues = ($latestReport && !empty(trim($latestReport->problems)))
+                ? $latestReport->problems
                 : "Belum ada laporan";
 
-            // Ambil kendala pekan sebelumnya dari tabel daily_reports
-            $prevReport = DailyReport::whereBetween('report_date', [$prevStartDate, $prevEndDate])
-                ->where(function($q) use ($divName, $cleanDivName) {
-                    $q->where('division', 'LIKE', "%{$divName}%")
-                      ->orWhere('division', 'LIKE', "%{$cleanDivName}%");
+            $prevReport = DailyReport::whereBetween('report_date', [$prevStart, $prevEnd])
+                ->where(function ($q) use ($divName, $cleanDivName) {
+                    $q->where('division', 'like', "%{$divName}%")
+                      ->orWhere('division', 'like', "%{$cleanDivName}%");
                 })
                 ->orderBy('report_date', 'desc')
                 ->first();
 
-            $prevIssues = ($prevReport && !empty(trim($prevReport->problems))) 
-                ? $prevReport->problems 
+            $prevIssues = ($prevReport && !empty(trim($prevReport->problems)))
+                ? $prevReport->problems
                 : "Belum ada laporan";
 
             $divisionPerformance[] = [
                 'name' => $divName,
-                'assigned' => $assignedThisWeek,
-                'completed' => $completedThisWeek,
-                'prev_completed' => $completedPrevWeek,
+                'assigned' => $projectsCreatedThisWeek,
+                'completed' => $completedTasksThisWeek,
+                'prev_completed' => $completedTasksPrevWeek,
+                'completed_projects' => $completedProjectsThisWeek,
+                'prev_completed_projects' => $completedProjectsPrevWeek,
                 'overdue' => $overdue,
                 'issues' => $issues,
                 'prev_issues' => $prevIssues,
