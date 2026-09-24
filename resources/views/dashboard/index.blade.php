@@ -89,7 +89,7 @@
         </div>
     </div>
 
-    <!-- 2. GRAFIK PRODUKTIVITAS & TOP ANGGOTA (LEADERBOARD) -->
+    <!-- 2. GRAFIK PRODUKTIVITAS & PERINGKAT ANGGOTA -->
     <div class="row">
         <!-- Grafik Trend Task Selesai -->
         <div class="col-xl-8 col-lg-7">
@@ -98,71 +98,171 @@
                     <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-chart-line mr-1"></i> Grafik Produktivitas Task Selesai</h6>
                 </div>
                 <div class="card-body">
-                    <div class="chart-area">
+                    <div class="chart-area" style="height: 360px;">
                         <canvas id="productivityChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Top Anggota (Leaderboard) dengan Tinggi Sama & Scroll Dropdown -->
+        <!-- Peringkat Anggota (Leaderboard) -->
         <div class="col-xl-4 col-lg-5">
             <div class="card shadow mb-4">
                 <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 font-weight-bold text-success"><i class="fas fa-trophy mr-1"></i> Top Anggota (Periode Ini)</h6>
+                    <h6 class="m-0 font-weight-bold text-success">
+                        <i class="fas fa-trophy mr-1"></i> Peringkat Anggota (Periode Ini)
+                    </h6>
+                    <span class="badge badge-success badge-pill px-2 py-1">
+                        {{ $topMembers->count() }} Anggota
+                    </span>
                 </div>
-                <!-- Menggunakan card-body dengan tinggi tetap dan overflow-y: auto agar bisa di-scroll seperti dropdown -->
-                <div class="card-body px-3" style="height: 320px; overflow-y: auto;">
+                <div class="card-body px-3" style="height: 360px; overflow-y: auto;">
+
+                    {{-- ============ CSS UNTUK RANK ITEM ============ --}}
+                    <style>
+                        .rank-item {
+                            transition: all 0.2s ease;
+                            position: relative;
+                            border: 1px solid transparent;
+                        }
+                        .rank-item:hover {
+                            transform: translateY(-2px);
+                            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+                        }
+                        .rank-gold {
+                            background: linear-gradient(135deg, #fff9db 0%, #ffe8a3 100%);
+                            border-left: 5px solid #f59f0b;
+                            box-shadow: 0 2px 8px rgba(245, 159, 11, 0.18) !important;
+                        }
+                        .rank-silver {
+                            background: linear-gradient(135deg, #f8f9fa 0%, #e0e4e8 100%);
+                            border-left: 5px solid #adb5bd;
+                            box-shadow: 0 2px 8px rgba(173, 181, 189, 0.18) !important;
+                        }
+                        .rank-bronze {
+                            background: linear-gradient(135deg, #fff5f0 0%, #ffd9c2 100%);
+                            border-left: 5px solid #d9480f;
+                            box-shadow: 0 2px 8px rgba(217, 72, 15, 0.18) !important;
+                        }
+                        .rank-default {
+                            background-color: #f8f9fa;
+                            border-left: 5px solid #e3e6f0;
+                        }
+                        .rank-badge {
+                            position: absolute;
+                            bottom: -2px;
+                            right: -2px;
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 10px;
+                            font-weight: 700;
+                            color: #fff;
+                            border: 2px solid #fff;
+                            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+                            z-index: 2;
+                        }
+                        .rank-badge-gold {
+                            background: linear-gradient(135deg, #f59f0b 0%, #ffc107 100%);
+                        }
+                        .rank-badge-silver {
+                            background: linear-gradient(135deg, #adb5bd 0%, #ced4da 100%);
+                        }
+                        .rank-badge-bronze {
+                            background: linear-gradient(135deg, #d9480f 0%, #f76707 100%);
+                        }
+                        .rank-badge-normal {
+                            background: #6c757d;
+                        }
+                    </style>
+                    {{-- ============ END CSS ============ --}}
+
                     <div class="list-group list-group-flush">
                         @forelse($topMembers as $index => $member)
                             @php
-                                // Menentukan warna background/border berdasarkan peringkat
-                                $rankStyle = '';
-                                if ($index == 0) {
-                                    $rankStyle = 'background-color: #fff9db; border-left: 5px solid #f59f0b;'; // Gold
-                                } elseif ($index == 1) {
-                                    $rankStyle = 'background-color: #f8f9fa; border-left: 5px solid #ced4da;'; // Silver
-                                } elseif ($index == 2) {
-                                    $rankStyle = 'background-color: #fff5f5; border-left: 5px solid #d9480f;'; // Bronze
+                                $rank = $index + 1;
+
+                                if ($index === 0) {
+                                    $rankClass = 'rank-gold';
+                                    $badgeClass = 'rank-badge-gold';
+                                    $rankIcon = 'fa-crown';
+                                } elseif ($index === 1) {
+                                    $rankClass = 'rank-silver';
+                                    $badgeClass = 'rank-badge-silver';
+                                    $rankIcon = 'fa-medal';
+                                } elseif ($index === 2) {
+                                    $rankClass = 'rank-bronze';
+                                    $badgeClass = 'rank-badge-bronze';
+                                    $rankIcon = 'fa-medal';
+                                } else {
+                                    $rankClass = 'rank-default';
+                                    $badgeClass = 'rank-badge-normal';
+                                    $rankIcon = null;
                                 }
                             @endphp
-                            <div class="list-group-item d-flex justify-content-between align-items-center px-3 mb-2 rounded shadow-sm" style="{{ $rankStyle }}">
-                                <div class="d-flex align-items-center">
-                                    {{-- Avatar / Foto Profil --}}
-                                    @if($member->avatar)
-                                        <img src="{{ asset('storage/avatars/' . $member->avatar) }}"
-                                             alt="{{ $member->name }}"
-                                             class="rounded-circle mr-3 shadow-sm"
-                                             style="width: 42px; height: 42px; object-fit: cover; border: 2px solid #fff;">
-                                    @else
-                                        {{-- Fallback: inisial nama --}}
-                                        <div class="rounded-circle mr-3 d-flex align-items-center justify-content-center shadow-sm"
-                                             style="width: 42px; height: 42px; background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; font-weight: 700; font-size: 15px; border: 2px solid #fff;">
-                                            {{ strtoupper(substr($member->name, 0, 2)) }}
-                                        </div>
-                                    @endif
+
+                            <div class="list-group-item d-flex justify-content-between align-items-center px-3 mb-2 rounded rank-item {{ $rankClass }}">
+                                <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
+
+                                    {{-- Avatar + Badge Rank --}}
+                                    <div class="position-relative mr-3">
+                                        @if($member->avatar)
+                                            <img src="{{ asset('storage/avatars/' . $member->avatar) }}"
+                                                 alt="{{ $member->name }}"
+                                                 class="rounded-circle shadow-sm"
+                                                 style="width: 46px; height: 46px; object-fit: cover; border: 2px solid #fff;">
+                                        @else
+                                            <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+                                                 style="width: 46px; height: 46px; background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; font-weight: 700; font-size: 16px; border: 2px solid #fff;">
+                                                {{ strtoupper(substr($member->name, 0, 2)) }}
+                                            </div>
+                                        @endif
+
+                                        {{-- Badge rank di pojok kanan bawah avatar --}}
+                                        <span class="rank-badge {{ $badgeClass }}">
+                                            @if($rankIcon)
+                                                <i class="fas {{ $rankIcon }}"></i>
+                                            @else
+                                                {{ $rank }}
+                                            @endif
+                                        </span>
+                                    </div>
 
                                     {{-- Nama & Divisi --}}
-                                    <div>
-                                        <span class="font-weight-bold mr-1 
-                                            @if($index == 0) text-warning 
-                                            @elseif($index == 1) text-secondary 
-                                            @elseif($index == 2) text-danger 
-                                            @else text-primary @endif">
-                                            #{{ $index + 1 }}
-                                        </span>
-                                        <span class="font-weight-bold text-dark">{{ $member->name }}</span>
-                                        <br><small class="text-muted">{{ $member->division ?? 'Tanpa Divisi' }}</small>
+                                    <div style="min-width: 0; flex: 1;">
+                                        <div class="font-weight-bold text-dark text-truncate" style="font-size: 14px;">
+                                            {{ $member->name }}
+                                        </div>
+                                        <small class="text-muted">
+                                            <i class="fas fa-users mr-1" style="font-size: 10px;"></i>
+                                            {{ $member->division ?? 'Tanpa Divisi' }}
+                                        </small>
                                     </div>
                                 </div>
 
                                 {{-- Badge Task Selesai --}}
-                                <span class="badge badge-success badge-pill p-2" style="font-size: 12px;">
-                                    {{ $member->tasks_count }} Task Selesai
-                                </span>
+                                @if($member->tasks_count > 0)
+                                    <span class="badge badge-success badge-pill px-3 py-2 ml-2"
+                                          style="font-size: 12px; white-space: nowrap;"
+                                          title="{{ $member->tasks_count }} task diselesaikan">
+                                        <i class="fas fa-check-circle mr-1"></i>{{ $member->tasks_count }}
+                                    </span>
+                                @else
+                                    <span class="badge badge-light border text-muted badge-pill px-3 py-2 ml-2"
+                                          style="font-size: 12px; white-space: nowrap;"
+                                          title="Belum ada task selesai">
+                                        0
+                                    </span>
+                                @endif
                             </div>
                         @empty
-                            <p class="text-muted text-center mb-0 mt-5">Belum ada data task selesai pada periode ini.</p>
+                            <div class="text-center py-5">
+                                <i class="fas fa-users fa-3x text-gray-300 mb-3"></i>
+                                <p class="text-muted mb-0">Belum ada anggota terdaftar.</p>
+                            </div>
                         @endforelse
                     </div>
                 </div>
