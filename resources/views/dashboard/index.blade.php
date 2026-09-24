@@ -243,12 +243,12 @@
                                     </div>
                                 </div>
 
-                                {{-- Badge Task Selesai --}}
-                                @if($member->tasks_count > 0)
+                                {{-- Badge Poin (Kontributor) --}}
+                                @if($member->contributed_tasks_count > 0)
                                     <span class="badge badge-success badge-pill px-3 py-2 ml-2"
                                           style="font-size: 12px; white-space: nowrap;"
-                                          title="{{ $member->tasks_count }} task diselesaikan">
-                                        <i class="fas fa-check-circle mr-1"></i>{{ $member->tasks_count }}
+                                          title="{{ $member->contributed_tasks_count }} task diselesaikan sebagai kontributor">
+                                        <i class="fas fa-check-circle mr-1"></i>{{ $member->contributed_tasks_count }}
                                     </span>
                                 @else
                                     <span class="badge badge-light border text-muted badge-pill px-3 py-2 ml-2"
