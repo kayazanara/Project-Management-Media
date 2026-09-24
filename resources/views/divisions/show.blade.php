@@ -96,7 +96,7 @@
                             <th>Nama Project</th>
                             <th>Status Workflow</th>
                             <th>Deadline</th>
-                            <th>Aksi</th>
+                            <th width="25%">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -113,15 +113,32 @@
                                     <span class="badge badge-primary">Revision</span>
                                 @elseif($proj->status == 'Overdue')
                                     <span class="badge badge-danger">Overdue</span>
-                                @else
+                                @elseif($proj->status == 'Planning')
                                     <span class="badge badge-secondary">Planning</span>
+                                @else
+                                    <span class="badge badge-secondary">{{ $proj->status }}</span>
                                 @endif
                             </td>
                             <td>{{ $proj->deadline }}</td>
                             <td class="text-center">
                                 <a href="{{ route('projects.show', $proj->id) }}" class="btn btn-info btn-sm" title="Lihat Detail & Task">
-                                    <i class="fas fa-eye"></i> Buka Project
+                                    <i class="fas fa-eye"></i> Buka
                                 </a>
+
+                                {{-- Tombol Ajukan Review: hanya muncul kalau status = On Progress --}}
+                                @if($proj->status == 'On Progress')
+                                    <form action="{{ route('division.projects.updateStatus', ['divisionName' => $divisionName, 'id' => $proj->id]) }}"
+                                          method="POST"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Ajukan project ini ke tahap Review?\n\nSetelah diajukan, Anda tidak bisa mengubah status lagi (hanya Pembina/Ketua yang bisa).');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="status" value="Review">
+                                        <button type="submit" class="btn btn-warning btn-sm" title="Ajukan ke Review">
+                                            <i class="fas fa-paper-plane"></i> Ajukan Review
+                                        </button>
+                                    </form>
+                                @endif
                             </td>
                         </tr>
                         @empty

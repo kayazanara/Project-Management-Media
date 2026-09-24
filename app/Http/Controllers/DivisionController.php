@@ -11,16 +11,28 @@ use Illuminate\Support\Facades\Auth;
 
 class DivisionController extends Controller
 {
+    /**
+     * Cek apakah user adalah Manager
+     */
+    private function isManager($user): bool
+    {
+        if (!$user) return false;
+        $userDiv = strtolower(trim($user->division ?? ''));
+        $userRole = strtolower(trim($user->role ?? ''));
+        return str_contains($userDiv, 'pembina')
+            || str_contains($userDiv, 'ketua')
+            || $userRole === 'administrator'
+            || str_contains($userRole, 'ustadz');
+    }
+
     public function show(Request $request, $divisionName)
     {
         $decodedDivision = urldecode($divisionName);
         $keyword = trim(str_replace('Tim', '', $decodedDivision));
 
-        // Anggota divisi
         $members = User::where('division', 'like', '%' . $keyword . '%')->get();
         $memberIds = $members->pluck('id');
 
-        // Project aktif + tasks di-load, urut Pending dulu baru Completed
         $projects = Project::whereHas('users', function ($q) use ($memberIds) {
             $q->whereIn('users.id', $memberIds);
         })
@@ -35,7 +47,6 @@ class DivisionController extends Controller
             ])
             ->get();
 
-        // Project selesai
         $completedProjects = Project::whereHas('users', function ($q) use ($memberIds) {
             $q->whereIn('users.id', $memberIds);
         })
@@ -43,7 +54,6 @@ class DivisionController extends Controller
             ->with(['users', 'tasks.assignedUser'])
             ->get();
 
-        // Semua task dari project aktif — untuk modal pilih kontributor
         $activeProjectIds = $projects->pluck('id');
         $tasks = ProjectTask::whereIn('project_id', $activeProjectIds)
             ->with(['project.users', 'assignedUser', 'contributors'])
@@ -51,7 +61,6 @@ class DivisionController extends Controller
             ->orderBy('task_date', 'asc')
             ->get();
 
-        // Riwayat Laporan dengan Filter
         $query = DailyReport::where('division', $decodedDivision)->with(['user', 'project']);
 
         if ($request->has('filter') && $request->filter != '') {
@@ -80,6 +89,62 @@ class DivisionController extends Controller
         ];
 
         return view('divisions.show', $data);
+    }
+
+    /**
+     * Ubah status project dari halaman Divisi (Tim & Laporan)
+     */
+    public function updateProjectStatus(Request $request, $divisionName, $id)
+    {
+        $request->validate([
+            'status' => 'required|string|in:Planning,On Progress,Review,Revision,Completed,Overdue',
+        ]);
+
+        $project = Project::findOrFail($id);
+        $user = auth()->user();
+        $isManager = $this->isManager($user);
+        $newStatus = $request->status;
+        $oldStatus = $project->status;
+        $decodedDivision = urldecode($divisionName);
+
+        // === Validasi sama seperti ProjectController ===
+        if ($oldStatus === 'Completed') {
+            return redirect()->route('division.show', $decodedDivision)
+                ->with('error', 'Project sudah selesai dan tidak bisa diubah lagi.');
+        }
+
+        if ($oldStatus === 'Overdue') {
+            if (!$isManager) {
+                return redirect()->route('division.show', $decodedDivision)
+                    ->with('error', 'Project Overdue hanya bisa diubah oleh Pembina/Ketua Media.');
+            }
+            if ($newStatus !== 'Completed') {
+                return redirect()->route('division.show', $decodedDivision)
+                    ->with('error', 'Project Overdue hanya bisa diubah ke Completed.');
+            }
+        }
+
+        if (!$isManager) {
+            $allowedTransitions = [
+                'Planning'    => ['On Progress'],
+                'On Progress' => ['Review'],
+                'Review'      => ['On Progress'],
+                'Revision'    => ['Review'],
+            ];
+
+            $isAllowed = isset($allowedTransitions[$oldStatus])
+                && in_array($newStatus, $allowedTransitions[$oldStatus]);
+
+            if (!$isAllowed) {
+                return redirect()->route('division.show', $decodedDivision)
+                    ->with('error', "Anda tidak punya akses untuk mengubah status dari {$oldStatus} ke {$newStatus}.");
+            }
+        }
+
+        $project->update(['status' => $newStatus]);
+
+        return redirect()->route('division.show', $decodedDivision)
+            ->with('success', 'Status project "' . $project->name . '" berhasil diubah menjadi ' . $newStatus . '!');
     }
 
     public function destroyReport($id)

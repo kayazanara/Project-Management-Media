@@ -10,16 +10,27 @@ use App\Events\ProjectCreated;
 
 class ProjectController extends Controller
 {
-    // Menampilkan daftar project, memisahkan aktif dan selesai, serta menghitung statistik status
-        public function index()
+    /**
+     * Cek apakah user adalah Manager (Pembina/Ketua/Admin/Ustadz)
+     */
+    private function isManager($user): bool
     {
-        // Otomatis update status menjadi Overdue jika melewati deadline dan belum Completed
+        if (!$user) return false;
+        $userDiv = strtolower(trim($user->division ?? ''));
+        $userRole = strtolower(trim($user->role ?? ''));
+        return str_contains($userDiv, 'pembina')
+            || str_contains($userDiv, 'ketua')
+            || $userRole === 'administrator'
+            || str_contains($userRole, 'ustadz');
+    }
+
+    public function index()
+    {
         Project::where('status', '!=', 'Completed')
             ->where('status', '!=', 'Overdue')
             ->where('deadline', '<', now()->toDateString())
             ->update(['status' => 'Overdue']);
 
-        // Proyek Aktif (Selain Completed) + hitung progress via withCount
         $projects = Project::where('status', '!=', 'Completed')
             ->with('users')
             ->withCount([
@@ -30,7 +41,6 @@ class ProjectController extends Controller
             ])
             ->get();
 
-        // Riwayat Proyek Selesai (Khusus Completed)
         $completedProjects = Project::where('status', 'Completed')
             ->with('users')
             ->withCount([
@@ -41,7 +51,6 @@ class ProjectController extends Controller
             ])
             ->get();
 
-        // Hitung statistik jumlah berdasarkan status project
         $countPlanning = Project::where('status', 'Planning')->count();
         $countOnProgress = Project::where('status', 'On Progress')->count();
         $countReview = Project::where('status', 'Review')->count();
@@ -62,19 +71,15 @@ class ProjectController extends Controller
         return view('projects.index', $data);
     }
 
-    // Menampilkan form tambah project
     public function create()
     {
         $users = User::all();
-        $data = [
+        return view('projects.create', [
             'title' => 'Tambah Project Baru',
             'users' => $users
-        ];
-
-        return view('projects.create', $data);
+        ]);
     }
 
-    // Menyimpan data project baru
     public function store(Request $request)
     {
         $request->validate([
@@ -105,28 +110,23 @@ class ProjectController extends Controller
 
         $project->users()->attach($request->user_ids);
 
-        // 🔔 Kirim notifikasi WA ke semua anggota project (via event → listener → job)
         ProjectCreated::dispatch($project);
 
         return redirect()->route('projects.index')->with('success', 'Project baru berhasil ditambahkan!');
     }
 
-    // Menampilkan form edit project
     public function edit($id)
     {
         $project = Project::with('users')->findOrFail($id);
         $users = User::all();
-        
-        $data = [
+
+        return view('projects.edit', [
             'title' => 'Edit Project',
             'project' => $project,
             'users' => $users
-        ];
-
-        return view('projects.edit', $data);
+        ]);
     }
 
-    // Mengupdate data project
     public function update(Request $request, $id)
     {
         $request->validate([
@@ -137,17 +137,10 @@ class ProjectController extends Controller
             'deadline' => 'required|date|after_or_equal:start_date',
             'reference_link' => 'nullable|string',
             'brief' => 'nullable|string',
-        ], [
-            'name.required' => 'Nama project wajib diisi.',
-            'user_ids.required' => 'Minimal harus memilih satu orang yang terlibat dalam project.',
-            'user_ids.min' => 'Minimal harus memilih satu orang yang terlibat dalam project.',
-            'start_date.required' => 'Tanggal masuk project wajib diisi.',
-            'deadline.required' => 'Tanggal deadline wajib diisi.',
-            'deadline.after_or_equal' => 'Deadline tidak boleh lebih awal dari tanggal mulai project.',
         ]);
 
         $project = Project::findOrFail($id);
-        
+
         $project->update([
             'name' => $request->name,
             'start_date' => $request->start_date,
@@ -156,53 +149,45 @@ class ProjectController extends Controller
             'brief' => $request->brief,
         ]);
 
-        // Sinkronisasi ulang relasi user yang terlibat
         $project->users()->sync($request->user_ids);
 
         return redirect()->route('projects.index')->with('success', 'Project berhasil diupdate!');
     }
 
-    // Menghapus project
     public function destroy($id)
     {
         $project = Project::findOrFail($id);
-        $project->users()->detach(); // Menghapus relasi dari pivot table
+        $project->users()->detach();
         $project->delete();
 
         return redirect()->route('projects.index')->with('success', 'Project berhasil dihapus!');
     }
 
-    // Menampilkan detail project, task, progress otomatis, dan pengecekan otomatis Overdue
     public function show($id)
     {
-        $project = Project::with(['users', 'tasks.assignedUser'])->findOrFail($id);
-        
-        // Cek otomatis Overdue: jika deadline sudah lewat dari hari ini dan status belum Completed
+        $project = Project::with(['users', 'tasks.assignedUser', 'tasks.contributors'])->findOrFail($id);
+
         if ($project->status != 'Completed' && $project->deadline < now()->toDateString()) {
             if ($project->status != 'Overdue') {
                 $project->update(['status' => 'Overdue']);
                 $project->refresh();
             }
         }
-        
-        // Hitung Progress Otomatis (Completed Task / Total Task * 100)
+
         $totalTasks = $project->tasks->count();
         $completedTasks = $project->tasks->where('status', 'Completed')->count();
         $progress = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100) : 0;
 
         $users = User::all();
 
-        $data = [
+        return view('projects.show', [
             'title' => 'Detail Project: ' . $project->name,
             'project' => $project,
             'progress' => $progress,
             'users' => $users
-        ];
-
-        return view('projects.show', $data);
+        ]);
     }
 
-    // Menyimpan task baru ke dalam project
     public function storeTask(Request $request, $id)
     {
         $request->validate([
@@ -224,19 +209,13 @@ class ProjectController extends Controller
         return redirect()->route('projects.show', $id)->with('success', 'Task baru berhasil ditambahkan!');
     }
 
-    // Mengubah status task (Pending <-> Completed) sekaligus memperbarui progress otomatis
-        /**
-     * Mengubah status task (Pending <-> Completed)
-     * - Saat Completed: wajib pilih kontributor (multi-select)
-     * - Saat Reopen (Completed → Pending): kontributor tetap tersimpan
-     */
     public function toggleTask(Request $request, $id)
     {
         $task = ProjectTask::findOrFail($id);
+        $project = $task->project;
 
         // ============================================
         // KASUS 1: REOPEN (Completed → Pending)
-        // Kontributor TIDAK dihapus
         // ============================================
         if ($task->status == 'Completed') {
             $task->status = 'Pending';
@@ -248,7 +227,6 @@ class ProjectController extends Controller
 
         // ============================================
         // KASUS 2: COMPLETE (Pending → Completed)
-        // Wajib pilih kontributor
         // ============================================
         $request->validate([
             'contributors' => 'required|array|min:1',
@@ -262,15 +240,26 @@ class ProjectController extends Controller
         $task->completed_at = now();
         $task->save();
 
-        // Sync kontributor (yang tidak dicentang akan dihapus, yang dicentang disimpan)
         $task->contributors()->sync($request->contributors);
 
         $names = User::whereIn('id', $request->contributors)->pluck('name')->implode(', ');
 
+        // ============================================
+        // CEK: Apakah ini task pertama yang selesai
+        // & status project masih Planning?
+        // → Tawarkan ubah ke On Progress
+        // ============================================
+        $completedCount = $project->tasks()->where('status', 'Completed')->count();
+
+        if ($completedCount === 1 && $project->status === 'Planning') {
+            return redirect()->route('projects.show', $project->id)
+                ->with('success', "Task selesai! Kontributor: {$names}")
+                ->with('suggest_on_progress', true);
+        }
+
         return redirect()->back()->with('success', "Task selesai! Kontributor: {$names}");
     }
 
-    // Menghapus task
     public function destroyTask($id)
     {
         $task = ProjectTask::findOrFail($id);
@@ -280,21 +269,17 @@ class ProjectController extends Controller
         return redirect()->route('projects.show', $projectId)->with('success', 'Task berhasil dihapus!');
     }
 
-    // Menampilkan form edit task
     public function editTask($id)
     {
         $task = ProjectTask::with('project.users')->findOrFail($id);
-        
-        $data = [
+
+        return view('projects.edit-task', [
             'title' => 'Edit Task: ' . $task->title,
             'task' => $task,
             'project' => $task->project
-        ];
-
-        return view('projects.edit-task', $data);
+        ]);
     }
 
-    // Memperbarui data task
     public function updateTask(Request $request, $id)
     {
         $request->validate([
@@ -315,7 +300,15 @@ class ProjectController extends Controller
         return redirect()->route('projects.show', $task->project_id)->with('success', 'Task berhasil diperbarui!');
     }
 
-    // Memperbarui status workflow project
+    /**
+     * Update status workflow project — dengan validasi role & transisi.
+     *
+     * Aturan:
+     * - Completed: tidak bisa diubah lagi
+     * - Overdue: hanya bisa → Completed, hanya oleh Manager
+     * - Santri: Planning → On Progress → Review (hanya ini)
+     * - Manager: bebas semua transisi (kecuali dari Completed)
+     */
     public function updateProjectStatus(Request $request, $id)
     {
         $request->validate([
@@ -323,10 +316,46 @@ class ProjectController extends Controller
         ]);
 
         $project = Project::findOrFail($id);
-        $project->update([
-            'status' => $request->status,
-        ]);
+        $user = auth()->user();
+        $isManager = $this->isManager($user);
+        $newStatus = $request->status;
+        $oldStatus = $project->status;
 
-        return redirect()->route('projects.show', $id)->with('success', 'Status workflow project berhasil diperbarui menjadi ' . $request->status . '!');
+        // === Rule 1: Project Completed → tidak bisa diubah ===
+        if ($oldStatus === 'Completed') {
+            return redirect()->back()->with('error', 'Project sudah selesai dan tidak bisa diubah lagi.');
+        }
+
+        // === Rule 2: Project Overdue → hanya Completed (oleh Manager) ===
+        if ($oldStatus === 'Overdue') {
+            if (!$isManager) {
+                return redirect()->back()->with('error', 'Project Overdue hanya bisa diubah oleh Pembina/Ketua Media.');
+            }
+            if ($newStatus !== 'Completed') {
+                return redirect()->back()->with('error', 'Project Overdue hanya bisa diubah ke Completed.');
+            }
+        }
+
+        // === Rule 3: Santri → hanya transisi terbatas ===
+        if (!$isManager) {
+            $allowedTransitions = [
+                'Planning'    => ['On Progress'],
+                'On Progress' => ['Review'],
+                'Review'      => ['On Progress'],
+                'Revision'    => ['Review'],
+            ];
+
+            $isAllowed = isset($allowedTransitions[$oldStatus])
+                && in_array($newStatus, $allowedTransitions[$oldStatus]);
+
+            if (!$isAllowed) {
+                return redirect()->back()->with('error', "Anda tidak punya akses untuk mengubah status dari {$oldStatus} ke {$newStatus}.");
+            }
+        }
+
+        $project->update(['status' => $newStatus]);
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', 'Status workflow project berhasil diperbarui menjadi ' . $newStatus . '!');
     }
 }

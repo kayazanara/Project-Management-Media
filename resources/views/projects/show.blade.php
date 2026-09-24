@@ -391,4 +391,48 @@
             });
         });
     </script>
+    {{-- ===================================================== --}}
+    {{-- MODAL SUGGEST: Ubah ke On Progress --}}
+    {{-- Muncul otomatis saat task pertama selesai & status masih Planning --}}
+    {{-- ===================================================== --}}
+    @if(session('suggest_on_progress'))
+        <div class="modal fade" id="suggestOnProgressModal" tabindex="-1" role="dialog" aria-labelledby="suggestOnProgressModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning text-white">
+                        <h5 class="modal-title font-weight-bold" id="suggestOnProgressModalLabel">
+                            <i class="fas fa-rocket mr-1"></i> Task Pertama Selesai!
+                        </h5>
+                    </div>
+                    <div class="modal-body text-center">
+                        <i class="fas fa-arrow-circle-up fa-4x text-warning mb-3"></i>
+                        <h5 class="font-weight-bold mb-2">Mantap! 🎉</h5>
+                        <p class="mb-0">
+                            Task pertama sudah selesai. Apakah Anda ingin mengubah status project dari <strong>Planning</strong> menjadi <strong>On Progress</strong>?
+                        </p>
+                    </div>
+                    <div class="modal-footer justify-content-center">
+                        <form action="{{ route('projects.updateStatus', $project->id) }}" method="POST" class="d-inline">
+                            @csrf
+                            @method('PATCH')
+                            <input type="hidden" name="status" value="On Progress">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-check mr-1"></i> Ya, Ubah ke On Progress
+                            </button>
+                        </form>
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                            <i class="fas fa-clock mr-1"></i> Nanti Saja
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                if (typeof jQuery !== 'undefined') {
+                    jQuery('#suggestOnProgressModal').modal('show');
+                }
+            });
+        </script>
+    @endif
 @endsection
