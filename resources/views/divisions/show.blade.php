@@ -135,101 +135,173 @@
         </div>
     </div>
 
-    <!-- Daftar Task & Progress Anggota Divisi (Aktif) -->
+    <!-- ============================================ -->
+    <!-- MONITORING TASK & PROGRESS (GROUP PER PROJECT) -->
+    <!-- ============================================ -->
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">Monitoring Task & Progress Anggota Divisi (Aktif)</h6>
         </div>
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-bordered" width="100%" cellspacing="0">
-                    <thead>
-                        <tr>
-                            <th width="5%">Status</th>
-                            <th>Nama Task / Checklist</th>
-                            <th>Project Sumber</th>
-                            <th>PIC</th>
-                            <th>Kontributor (Poin)</th>
-                            <th>Target Tanggal</th>
-                            <th>Tanggal Selesai</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($tasks as $task)
-                        <tr>
-                            <td class="text-center">
-                                @if($task->status == 'Completed')
-                                    {{-- Completed → klik untuk reopen (batalkan) --}}
-                                    <form action="{{ route('tasks.toggle', $task->id) }}" method="POST"
-                                          onsubmit="return confirm('Batalkan penyelesaian task ini? Kontributor tetap tersimpan.');">
-                                        @csrf
-                                        @method('PATCH')
-                                        <button type="submit" class="btn btn-sm btn-success" title="Klik untuk batalkan (reopen)">
-                                            <i class="fas fa-check-square"></i>
-                                        </button>
-                                    </form>
-                                @else
-                                    {{-- Belum completed → buka modal pilih kontributor --}}
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" 
-                                            data-toggle="modal" 
-                                            data-target="#completeTaskModal{{ $task->id }}"
-                                            title="Klik untuk tandai selesai & pilih kontributor">
-                                        <i class="fas fa-square"></i>
-                                    </button>
-                                @endif
-                            </td>
-                            <td>
-                                <span class="{{ $task->status == 'Completed' ? 'text-muted text-decoration-line-through' : 'font-weight-bold' }}">
-                                    {{ $task->title }}
-                                </span>
-                                @if($task->description)
-                                    <br><small class="text-muted">{{ $task->description }}</small>
-                                @endif
-                            </td>
-                            <td>
-                                <a href="{{ route('projects.show', $task->project_id) }}">
-                                    {{ $task->project->name ?? '-' }}
-                                </a>
-                            </td>
-                            <td>
-                                @if($task->assignedUser)
-                                    <span class="badge badge-secondary">
-                                        <i class="fas fa-user mr-1"></i>{{ $task->assignedUser->name }}
-                                    </span>
-                                @else
-                                    <span class="text-muted small">-</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if($task->contributors->count() > 0)
-                                    @foreach($task->contributors as $contributor)
-                                        <span class="badge badge-success mr-1 mb-1">
-                                            <i class="fas fa-star mr-1"></i>{{ $contributor->name }}
-                                        </span>
-                                    @endforeach
-                                @else
-                                    <span class="text-muted small font-italic">Belum ada kontributor</span>
-                                @endif
-                            </td>
-                            <td>{{ $task->task_date ?? '-' }}</td>
-                            <td>
-                                @if($task->completed_at)
-                                    <span class="badge badge-success">
-                                        <i class="fas fa-calendar-check mr-1"></i>
-                                        {{ \Carbon\Carbon::parse($task->completed_at)->format('d M Y, H:i') }}
-                                    </span>
-                                @else
-                                    <span class="text-muted small">-</span>
-                                @endif
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="7" class="text-center text-muted">Belum ada task aktif yang ditugaskan ke anggota di divisi ini.</td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
+
+            {{-- Filter & Search --}}
+            <div class="row mb-3">
+                <div class="col-md-7 mb-2">
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                        </div>
+                        <input type="text" id="taskSearchInput" class="form-control" 
+                               placeholder="Cari nama task, deskripsi, atau PIC...">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" title="Hapus pencarian">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-5 mb-2">
+                    <select id="projectFilter" class="form-control">
+                        <option value="">-- Semua Project --</option>
+                        @foreach($projects as $proj)
+                            @if($proj->tasks->count() > 0)
+                                <option value="{{ $proj->id }}">{{ $proj->name }} ({{ $proj->tasks->count() }} Task)</option>
+                            @endif
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+
+            {{-- Container dengan scroll --}}
+            <div id="tasksContainer" style="max-height: 600px; overflow-y: auto; padding-right: 5px;">
+                @php $hasAnyTask = false; @endphp
+
+                @foreach($projects as $project)
+                    @if($project->tasks->count() > 0)
+                        @php $hasAnyTask = true; @endphp
+                        <div class="project-group mb-4" data-project-id="{{ $project->id }}">
+                            {{-- Header Project --}}
+                            <div class="d-flex align-items-center justify-content-between border-bottom pb-2 mb-3">
+                                <h6 class="m-0 font-weight-bold text-primary">
+                                    <i class="fas fa-folder-open mr-1"></i>
+                                    <a href="{{ route('projects.show', $project->id) }}" class="text-primary">
+                                        {{ $project->name }}
+                                    </a>
+                                </h6>
+                                <div>
+                                    <span class="badge badge-secondary">{{ $project->tasks->count() }} Task</span>
+                                    @if($project->status == 'On Progress')
+                                        <span class="badge badge-warning">On Progress</span>
+                                    @elseif($project->status == 'Overdue')
+                                        <span class="badge badge-danger">Overdue</span>
+                                    @elseif($project->status == 'Review')
+                                        <span class="badge badge-info">Review</span>
+                                    @elseif($project->status == 'Revision')
+                                        <span class="badge badge-primary">Revision</span>
+                                    @else
+                                        <span class="badge badge-secondary">{{ $project->status }}</span>
+                                    @endif
+                                </div>
+                            </div>
+
+                            {{-- Tabel Task per Project --}}
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm" width="100%" cellspacing="0">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th width="5%">Status</th>
+                                            <th>Nama Task / Checklist</th>
+                                            <th>PIC</th>
+                                            <th>Kontributor (Poin)</th>
+                                            <th>Target Tanggal</th>
+                                            <th>Tanggal Selesai</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($project->tasks as $task)
+                                            <tr class="task-row"
+                                                data-task-title="{{ strtolower($task->title) }}"
+                                                data-task-desc="{{ strtolower($task->description ?? '') }}"
+                                                data-pic="{{ strtolower($task->assignedUser->name ?? '') }}">
+                                                <td class="text-center">
+                                                    @if($task->status == 'Completed')
+                                                        <form action="{{ route('tasks.toggle', $task->id) }}" method="POST"
+                                                              onsubmit="return confirm('Batalkan penyelesaian task ini? Kontributor tetap tersimpan.');">
+                                                            @csrf
+                                                            @method('PATCH')
+                                                            <button type="submit" class="btn btn-sm btn-success" title="Klik untuk batalkan (reopen)">
+                                                                <i class="fas fa-check-square"></i>
+                                                            </button>
+                                                        </form>
+                                                    @else
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                                data-toggle="modal"
+                                                                data-target="#completeTaskModal{{ $task->id }}"
+                                                                title="Klik untuk tandai selesai & pilih kontributor">
+                                                            <i class="fas fa-square"></i>
+                                                        </button>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    <span class="{{ $task->status == 'Completed' ? 'text-muted text-decoration-line-through' : 'font-weight-bold' }}">
+                                                        {{ $task->title }}
+                                                    </span>
+                                                    @if($task->description)
+                                                        <br><small class="text-muted">{{ $task->description }}</small>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    @if($task->assignedUser)
+                                                        <span class="badge badge-secondary">
+                                                            <i class="fas fa-user mr-1"></i>{{ $task->assignedUser->name }}
+                                                        </span>
+                                                    @else
+                                                        <span class="text-muted small">-</span>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    @if($task->contributors->count() > 0)
+                                                        @foreach($task->contributors as $contributor)
+                                                            <span class="badge badge-success mr-1 mb-1">
+                                                                <i class="fas fa-star mr-1"></i>{{ $contributor->name }}
+                                                            </span>
+                                                        @endforeach
+                                                    @else
+                                                        <span class="text-muted small font-italic">Belum ada kontributor</span>
+                                                    @endif
+                                                </td>
+                                                <td>{{ $task->task_date ?? '-' }}</td>
+                                                <td>
+                                                    @if($task->completed_at)
+                                                        <span class="badge badge-success">
+                                                            <i class="fas fa-calendar-check mr-1"></i>
+                                                            {{ \Carbon\Carbon::parse($task->completed_at)->format('d M Y, H:i') }}
+                                                        </span>
+                                                    @else
+                                                        <span class="text-muted small">-</span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endif
+                @endforeach
+
+                @if(!$hasAnyTask)
+                    <div class="text-center text-muted py-5">
+                        <i class="fas fa-tasks fa-3x text-gray-300 mb-3"></i>
+                        <p class="mb-0">Belum ada task aktif yang ditugaskan ke anggota di divisi ini.</p>
+                    </div>
+                @endif
+
+                {{-- Empty state untuk search --}}
+                <div id="noResults" class="text-center text-muted py-5" style="display: none;">
+                    <i class="fas fa-search fa-3x text-gray-300 mb-3"></i>
+                    <p class="mb-0">Tidak ada task yang cocok dengan filter/pencarian.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -238,7 +310,6 @@
     <div class="card shadow mb-4">
         <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
             <h6 class="m-0 font-weight-bold text-success">Riwayat Laporan Harian {{ $divisionName }}</h6>
-            
             <form action="{{ route('division.show', $divisionName) }}" method="GET" class="form-inline">
                 <select name="filter" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
                     <option value="">-- Semua Waktu --</option>
@@ -294,7 +365,7 @@
         </div>
     </div>
 
-    <!-- Riwayat Project Selesai (Completed Projects) -->
+    <!-- Riwayat Project Selesai -->
     <div class="card shadow mb-4 border-left-success">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-success"><i class="fas fa-check-circle mr-1"></i> Riwayat Project Selesai (Completed)</h6>
@@ -316,9 +387,7 @@
                         <tr>
                             <td>{{ $index + 1 }}</td>
                             <td><strong>{{ $compProj->name }}</strong></td>
-                            <td>
-                                <span class="badge badge-success">Completed</span>
-                            </td>
+                            <td><span class="badge badge-success">Completed</span></td>
                             <td>{{ $compProj->deadline }}</td>
                             <td class="text-center">
                                 <a href="{{ route('projects.show', $compProj->id) }}" class="btn btn-info btn-sm" title="Lihat Detail Project">
@@ -376,7 +445,7 @@
                             <div class="border rounded p-2" style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa;">
                                 @foreach($task->project->users as $member)
                                     @php
-                                        $isChecked = $task->contributors->contains($member->id) 
+                                        $isChecked = $task->contributors->contains($member->id)
                                                   || $task->assigned_to == $member->id;
                                     @endphp
                                     <label for="contributor_{{ $task->id }}_{{ $member->id }}"
@@ -384,29 +453,25 @@
                                            style="cursor: pointer; border: 2px solid transparent; transition: all 0.15s; margin-bottom: 0.5rem;"
                                            onmouseover="this.style.borderColor='#4e73df'; this.style.backgroundColor='#f0f3ff';"
                                            onmouseout="this.style.borderColor='transparent'; this.style.backgroundColor='#ffffff';">
-                                        
-                                        <input type="checkbox" 
+                                        <input type="checkbox"
                                                id="contributor_{{ $task->id }}_{{ $member->id }}"
-                                               name="contributors[]" 
+                                               name="contributors[]"
                                                value="{{ $member->id }}"
                                                style="width: 22px; height: 22px; margin: 0 12px 0 0; cursor: pointer; flex-shrink: 0;"
                                                {{ $isChecked ? 'checked' : '' }}>
-                                        
                                         @if($member->avatar)
-                                            <img src="{{ asset('storage/avatars/' . $member->avatar) }}" 
-                                                 class="rounded-circle mr-2" 
+                                            <img src="{{ asset('storage/avatars/' . $member->avatar) }}"
+                                                 class="rounded-circle mr-2"
                                                  style="width: 32px; height: 32px; object-fit: cover; border: 2px solid #fff; flex-shrink: 0;">
                                         @else
-                                            <div class="rounded-circle bg-primary text-white mr-2 d-flex align-items-center justify-content-center" 
+                                            <div class="rounded-circle bg-primary text-white mr-2 d-flex align-items-center justify-content-center"
                                                  style="width: 32px; height: 32px; font-size: 12px; font-weight: 700; flex-shrink: 0;">
                                                 {{ strtoupper(substr($member->name, 0, 2)) }}
                                             </div>
                                         @endif
-                                        
                                         <span class="font-weight-bold text-dark flex-grow-1" style="font-size: 14px;">
                                             {{ $member->name }}
                                         </span>
-                                        
                                         @if($task->assigned_to == $member->id)
                                             <span class="badge badge-info badge-pill px-2 py-1 ml-2" style="font-size: 11px;">
                                                 PIC
@@ -509,14 +574,64 @@
     </div>
 
     {{-- ===================================================== --}}
-    {{-- JS: PINDAHKAN SEMUA MODAL KE <body> --}}
+    {{-- JS: SEARCH + FILTER PROJECT + MOVE MODAL TO BODY --}}
     {{-- ===================================================== --}}
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // 1. Pindahkan modal ke body (fix layout)
             document.querySelectorAll('.modal').forEach(function (modal) {
                 if (modal.parentElement !== document.body) {
                     document.body.appendChild(modal);
                 }
+            });
+
+            // 2. Search & Filter
+            const searchInput = document.getElementById('taskSearchInput');
+            const projectFilter = document.getElementById('projectFilter');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            const noResults = document.getElementById('noResults');
+
+            function applyFilter() {
+                const search = (searchInput.value || '').toLowerCase().trim();
+                const selectedProject = projectFilter.value;
+                let totalVisible = 0;
+
+                document.querySelectorAll('.project-group').forEach(function (group) {
+                    const groupProjectId = group.dataset.projectId;
+
+                    // Filter project
+                    if (selectedProject && groupProjectId !== selectedProject) {
+                        group.style.display = 'none';
+                        return;
+                    }
+
+                    let groupVisibleCount = 0;
+                    group.querySelectorAll('.task-row').forEach(function (row) {
+                        const title = row.dataset.taskTitle || '';
+                        const desc = row.dataset.taskDesc || '';
+                        const pic = row.dataset.pic || '';
+
+                        const match = !search
+                            || title.includes(search)
+                            || desc.includes(search)
+                            || pic.includes(search);
+
+                        row.style.display = match ? '' : 'none';
+                        if (match) groupVisibleCount++;
+                    });
+
+                    group.style.display = groupVisibleCount > 0 ? '' : 'none';
+                    totalVisible += groupVisibleCount;
+                });
+
+                noResults.style.display = totalVisible === 0 ? 'block' : 'none';
+            }
+
+            searchInput.addEventListener('input', applyFilter);
+            projectFilter.addEventListener('change', applyFilter);
+            clearBtn.addEventListener('click', function () {
+                searchInput.value = '';
+                applyFilter();
             });
         });
     </script>

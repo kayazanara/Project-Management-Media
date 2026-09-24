@@ -11,38 +11,47 @@ use Illuminate\Support\Facades\Auth;
 
 class DivisionController extends Controller
 {
-    // Menampilkan halaman monitoring & laporan harian dengan opsi filter
     public function show(Request $request, $divisionName)
     {
         $decodedDivision = urldecode($divisionName);
         $keyword = trim(str_replace('Tim', '', $decodedDivision));
 
-        // Ambil anggota divisi
+        // Anggota divisi
         $members = User::where('division', 'like', '%' . $keyword . '%')->get();
         $memberIds = $members->pluck('id');
 
-        // Ambil project aktif (selain Completed) untuk statistik dan tabel project aktif
-        $projects = Project::whereHas('users', function($q) use ($memberIds) {
+        // Project aktif + tasks di-load, urut Pending dulu baru Completed
+        $projects = Project::whereHas('users', function ($q) use ($memberIds) {
             $q->whereIn('users.id', $memberIds);
-        })->where('status', '!=', 'Completed')
-          ->with(['users', 'tasks.assignedUser'])
-          ->get();
-
-        // Ambil project selesai (khusus status Completed) untuk Riwayat Project Selesai
-        $completedProjects = Project::whereHas('users', function($q) use ($memberIds) {
-            $q->whereIn('users.id', $memberIds);
-        })->where('status', 'Completed')
-          ->with(['users', 'tasks.assignedUser'])
-          ->get();
-
-        // Ambil task aktif (hanya dari project aktif yang belum Completed)
-        $activeProjectIds = $projects->pluck('id');
-        $tasks = ProjectTask::whereIn('project_id', $activeProjectIds)
-            ->whereIn('assigned_to', $memberIds)
-            ->with(['project', 'assignedUser'])
+        })
+            ->where('status', '!=', 'Completed')
+            ->with([
+                'users',
+                'tasks' => function ($q) {
+                    $q->with(['assignedUser', 'contributors'])
+                      ->orderByRaw("CASE WHEN status = 'Completed' THEN 1 ELSE 0 END")
+                      ->orderBy('task_date', 'asc');
+                }
+            ])
             ->get();
 
-        // Query Riwayat Laporan dengan Filter
+        // Project selesai
+        $completedProjects = Project::whereHas('users', function ($q) use ($memberIds) {
+            $q->whereIn('users.id', $memberIds);
+        })
+            ->where('status', 'Completed')
+            ->with(['users', 'tasks.assignedUser'])
+            ->get();
+
+        // Semua task dari project aktif — untuk modal pilih kontributor
+        $activeProjectIds = $projects->pluck('id');
+        $tasks = ProjectTask::whereIn('project_id', $activeProjectIds)
+            ->with(['project.users', 'assignedUser', 'contributors'])
+            ->orderByRaw("CASE WHEN status = 'Completed' THEN 1 ELSE 0 END")
+            ->orderBy('task_date', 'asc')
+            ->get();
+
+        // Riwayat Laporan dengan Filter
         $query = DailyReport::where('division', $decodedDivision)->with(['user', 'project']);
 
         if ($request->has('filter') && $request->filter != '') {
@@ -64,7 +73,7 @@ class DivisionController extends Controller
             'divisionName' => $decodedDivision,
             'members' => $members,
             'projects' => $projects,
-            'completedProjects' => $completedProjects, // Data project selesai
+            'completedProjects' => $completedProjects,
             'tasks' => $tasks,
             'dailyReports' => $dailyReports,
             'currentFilter' => $request->filter ?? ''
@@ -73,7 +82,6 @@ class DivisionController extends Controller
         return view('divisions.show', $data);
     }
 
-    // Menghapus laporan harian
     public function destroyReport($id)
     {
         $report = DailyReport::findOrFail($id);
@@ -83,11 +91,10 @@ class DivisionController extends Controller
         return redirect()->route('division.show', $division)->with('success', 'Laporan harian berhasil dihapus!');
     }
 
-    // Menyimpan Laporan Harian (Otomatis dari task selesai pada tanggal tersebut)
     public function storeReport(Request $request, $divisionName)
     {
         $decodedDivision = urldecode($divisionName);
-        
+
         $request->validate([
             'report_date' => 'required|date',
             'project_id' => 'nullable|exists:projects,id',
@@ -98,18 +105,17 @@ class DivisionController extends Controller
 
         $keyword = trim(str_replace('Tim', '', $decodedDivision));
         $memberIds = User::where('division', 'like', '%' . $keyword . '%')->pluck('id');
-        
+
         $reportDate = $request->report_date;
 
-        // Ambil task yang statusnya Completed dan tanggal selesainya (completed_at) tepat pada tanggal laporan
         $completedTasks = ProjectTask::whereIn('assigned_to', $memberIds)
             ->where('status', 'Completed')
             ->whereDate('completed_at', $reportDate)
             ->pluck('title')
             ->toArray();
 
-        $completedWorkText = count($completedTasks) > 0 
-            ? implode(', ', $completedTasks) 
+        $completedWorkText = count($completedTasks) > 0
+            ? implode(', ', $completedTasks)
             : 'Tidak ada task baru yang diselesaikan pada tanggal ' . $reportDate;
 
         $unfinishedTasks = ProjectTask::whereIn('assigned_to', $memberIds)
