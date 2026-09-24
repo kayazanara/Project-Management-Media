@@ -151,6 +151,7 @@
                             <th>PIC</th>
                             <th>Kontributor (Poin)</th>
                             <th>Target Tanggal</th>
+                            <th>Tanggal Selesai</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -158,10 +159,17 @@
                         <tr>
                             <td class="text-center">
                                 @if($task->status == 'Completed')
-                                    <button type="button" class="btn btn-sm btn-success" title="Sudah selesai" disabled>
-                                        <i class="fas fa-check-square"></i>
-                                    </button>
+                                    {{-- Completed → klik untuk reopen (batalkan) --}}
+                                    <form action="{{ route('tasks.toggle', $task->id) }}" method="POST"
+                                          onsubmit="return confirm('Batalkan penyelesaian task ini? Kontributor tetap tersimpan.');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-sm btn-success" title="Klik untuk batalkan (reopen)">
+                                            <i class="fas fa-check-square"></i>
+                                        </button>
+                                    </form>
                                 @else
+                                    {{-- Belum completed → buka modal pilih kontributor --}}
                                     <button type="button" class="btn btn-sm btn-outline-secondary" 
                                             data-toggle="modal" 
                                             data-target="#completeTaskModal{{ $task->id }}"
@@ -204,10 +212,20 @@
                                 @endif
                             </td>
                             <td>{{ $task->task_date ?? '-' }}</td>
+                            <td>
+                                @if($task->completed_at)
+                                    <span class="badge badge-success">
+                                        <i class="fas fa-calendar-check mr-1"></i>
+                                        {{ \Carbon\Carbon::parse($task->completed_at)->format('d M Y, H:i') }}
+                                    </span>
+                                @else
+                                    <span class="text-muted small">-</span>
+                                @endif
+                            </td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted">Belum ada task aktif yang ditugaskan ke anggota di divisi ini.</td>
+                            <td colspan="7" class="text-center text-muted">Belum ada task aktif yang ditugaskan ke anggota di divisi ini.</td>
                         </tr>
                         @endforelse
                     </tbody>
