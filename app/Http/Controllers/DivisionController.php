@@ -8,12 +8,10 @@ use App\Models\Project;
 use App\Models\ProjectTask;
 use App\Models\DailyReport;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class DivisionController extends Controller
 {
-    /**
-     * Cek apakah user adalah Manager
-     */
     private function isManager($user): bool
     {
         if (!$user) return false;
@@ -33,6 +31,7 @@ class DivisionController extends Controller
         $members = User::where('division', 'like', '%' . $keyword . '%')->get();
         $memberIds = $members->pluck('id');
 
+        // === Project Aktif ===
         $projects = Project::whereHas('users', function ($q) use ($memberIds) {
             $q->whereIn('users.id', $memberIds);
         })
@@ -47,13 +46,26 @@ class DivisionController extends Controller
             ])
             ->get();
 
-        $completedProjects = Project::whereHas('users', function ($q) use ($memberIds) {
+        // === Project Selesai (dengan filter bulan/tahun) ===
+        $completedQuery = Project::whereHas('users', function ($q) use ($memberIds) {
             $q->whereIn('users.id', $memberIds);
         })
             ->where('status', 'Completed')
-            ->with(['users', 'tasks.assignedUser'])
-            ->get();
+            ->with(['users', 'tasks.assignedUser']);
 
+        $filterMonth = $request->input('completed_month');
+        $filterYear  = $request->input('completed_year');
+
+        if ($filterMonth) {
+            $completedQuery->whereMonth('completed_at', $filterMonth);
+        }
+        if ($filterYear) {
+            $completedQuery->whereYear('completed_at', $filterYear);
+        }
+
+        $completedProjects = $completedQuery->orderBy('completed_at', 'desc')->get();
+
+        // === Tasks ===
         $activeProjectIds = $projects->pluck('id');
         $tasks = ProjectTask::whereIn('project_id', $activeProjectIds)
             ->with(['project.users', 'assignedUser', 'contributors'])
@@ -61,6 +73,7 @@ class DivisionController extends Controller
             ->orderBy('task_date', 'asc')
             ->get();
 
+        // === Daily Reports ===
         $query = DailyReport::where('division', $decodedDivision)->with(['user', 'project']);
 
         if ($request->has('filter') && $request->filter != '') {
@@ -77,6 +90,17 @@ class DivisionController extends Controller
 
         $dailyReports = $query->orderBy('report_date', 'desc')->get();
 
+        // === Daftar tahun tersedia untuk filter ===
+        // SQLite tidak punya function YEAR() → pakai Carbon parse di PHP
+        $availableYears = Project::where('status', 'Completed')
+            ->whereNotNull('completed_at')
+            ->pluck('completed_at')
+            ->map(fn($date) => (int) Carbon::parse($date)->format('Y'))
+            ->unique()
+            ->sortDesc()
+            ->values()
+            ->toArray();
+
         $data = [
             'title' => 'Monitoring Divisi: ' . $decodedDivision,
             'divisionName' => $decodedDivision,
@@ -85,15 +109,15 @@ class DivisionController extends Controller
             'completedProjects' => $completedProjects,
             'tasks' => $tasks,
             'dailyReports' => $dailyReports,
-            'currentFilter' => $request->filter ?? ''
+            'currentFilter' => $request->filter ?? '',
+            'filterMonth' => $filterMonth,
+            'filterYear' => $filterYear,
+            'availableYears' => $availableYears,
         ];
 
         return view('divisions.show', $data);
     }
 
-    /**
-     * Ubah status project dari halaman Divisi (Tim & Laporan)
-     */
     public function updateProjectStatus(Request $request, $divisionName, $id)
     {
         $request->validate([
@@ -107,7 +131,6 @@ class DivisionController extends Controller
         $oldStatus = $project->status;
         $decodedDivision = urldecode($divisionName);
 
-        // === Validasi sama seperti ProjectController ===
         if ($oldStatus === 'Completed') {
             return redirect()->route('division.show', $decodedDivision)
                 ->with('error', 'Project sudah selesai dan tidak bisa diubah lagi.');
@@ -141,7 +164,15 @@ class DivisionController extends Controller
             }
         }
 
-        $project->update(['status' => $newStatus]);
+        // ⭐ Set completed_at kalau Completed, reset kalau bukan
+        $updateData = ['status' => $newStatus];
+        if ($newStatus === 'Completed') {
+            $updateData['completed_at'] = now();
+        } else {
+            $updateData['completed_at'] = null;
+        }
+
+        $project->update($updateData);
 
         return redirect()->route('division.show', $decodedDivision)
             ->with('success', 'Status project "' . $project->name . '" berhasil diubah menjadi ' . $newStatus . '!');
