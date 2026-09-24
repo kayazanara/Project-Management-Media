@@ -11,7 +11,7 @@ use App\Events\ProjectCreated;
 class ProjectController extends Controller
 {
     // Menampilkan daftar project, memisahkan aktif dan selesai, serta menghitung statistik status
-    public function index()
+        public function index()
     {
         // Otomatis update status menjadi Overdue jika melewati deadline dan belum Completed
         Project::where('status', '!=', 'Completed')
@@ -19,11 +19,27 @@ class ProjectController extends Controller
             ->where('deadline', '<', now()->toDateString())
             ->update(['status' => 'Overdue']);
 
-        // Proyek Aktif (Selain Completed)
-        $projects = Project::where('status', '!=', 'Completed')->with('users')->get();
+        // Proyek Aktif (Selain Completed) + hitung progress via withCount
+        $projects = Project::where('status', '!=', 'Completed')
+            ->with('users')
+            ->withCount([
+                'tasks as total_tasks_count',
+                'tasks as completed_tasks_count' => function ($q) {
+                    $q->where('status', 'Completed');
+                },
+            ])
+            ->get();
 
         // Riwayat Proyek Selesai (Khusus Completed)
-        $completedProjects = Project::where('status', 'Completed')->with('users')->get();
+        $completedProjects = Project::where('status', 'Completed')
+            ->with('users')
+            ->withCount([
+                'tasks as total_tasks_count',
+                'tasks as completed_tasks_count' => function ($q) {
+                    $q->where('status', 'Completed');
+                },
+            ])
+            ->get();
 
         // Hitung statistik jumlah berdasarkan status project
         $countPlanning = Project::where('status', 'Planning')->count();
