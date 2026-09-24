@@ -318,7 +318,20 @@
                                 <span class="font-weight-bold text-gray-800">
                                     <a href="{{ route('projects.show', $proj->id) }}">{{ $proj->name }}</a>
                                 </span>
-                                <span class="badge badge-warning">{{ $proj->status }}</span>
+                                {{-- Badge Status Dinamis --}}
+                                @if($proj->status == 'On Progress')
+                                    <span class="badge badge-warning">On Progress</span>
+                                @elseif($proj->status == 'Review')
+                                    <span class="badge badge-info">Review</span>
+                                @elseif($proj->status == 'Revision')
+                                    <span class="badge badge-primary">Revision</span>
+                                @elseif($proj->status == 'Overdue')
+                                    <span class="badge badge-danger">Overdue</span>
+                                @elseif($proj->status == 'Planning')
+                                    <span class="badge badge-secondary">Planning</span>
+                                @else
+                                    <span class="badge badge-secondary">{{ $proj->status }}</span>
+                                @endif
                             </div>
                             <small class="text-muted">Deadline: {{ $proj->deadline }}</small>
                         </div>
