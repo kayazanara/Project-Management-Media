@@ -47,10 +47,185 @@
         .img-container img {
             max-width: 100%;
         }
+
+        /* ===================================================== */
+        /* WELCOME ANIMATION OVERLAY — Minimalis Premium         */
+        /* ===================================================== */
+        .welcome-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            background: linear-gradient(135deg, #4e73df 0%, #5b5dd8 35%, #6f5bcf 65%, #8b5cf6 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            animation: welcomeOverlayOut 0.6s ease-in 2.4s forwards;
+        }
+
+        @keyframes welcomeOverlayOut {
+            from { opacity: 1; visibility: visible; }
+            to { opacity: 0; visibility: hidden; }
+        }
+
+        .welcome-content {
+            text-align: center;
+            color: #ffffff;
+            padding: 20px;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* "SELAMAT DATANG" — kecil, letter-spacing lebar */
+        .welcome-salam {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            opacity: 0;
+            margin-bottom: 18px;
+            color: rgba(255, 255, 255, 0.85);
+            animation: welcomeSlideUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+        }
+
+        /* NAMA SANTRI — besar, tebal, capslock */
+        .welcome-name {
+            font-size: 44px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            line-height: 1.15;
+            opacity: 0;
+            text-shadow: 0 6px 30px rgba(0, 0, 0, 0.2);
+            animation: welcomeSlideUp 1s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards;
+        }
+
+        /* Slide up + fade */
+        @keyframes welcomeSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Garis dekoratif di bawah nama */
+        .welcome-line {
+            width: 0;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.7);
+            margin: 20px auto 0;
+            animation: welcomeLineExpand 0.8s ease-out 1.1s forwards;
+            border-radius: 2px;
+        }
+
+        @keyframes welcomeLineExpand {
+            to { width: 60px; }
+        }
+
+        /* Subtext kecil */
+        .welcome-sub {
+            font-size: 12.5px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            color: rgba(255, 255, 255, 0.75);
+            margin-top: 16px;
+            opacity: 0;
+            animation: welcomeSlideUp 0.7s ease-out 1.2s forwards;
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .welcome-name { font-size: 30px; letter-spacing: 1px; }
+            .welcome-salam { font-size: 12px; letter-spacing: 5px; margin-bottom: 14px; }
+            .welcome-sub { font-size: 11.5px; }
+        }
     </style>
 </head>
 
 <body id="page-top">
+
+    {{-- ===================================================== --}}
+    {{-- WELCOME ANIMATION OVERLAY (Minimalis + Sound) --}}
+    {{-- ===================================================== --}}
+    @if(session('show_welcome'))
+        <div id="welcomeOverlay" class="welcome-overlay">
+            <div class="welcome-content">
+                <div class="welcome-salam">Selamat Datang</div>
+                <div class="welcome-name">{{ session('welcome_user_name') }}</div>
+                <div class="welcome-line"></div>
+                <div class="welcome-sub">Semangat berkarya hari ini ✨</div>
+            </div>
+        </div>
+
+        <script>
+            // ==========================================
+            // PREMIUM WELCOME CHIME (Web Audio API)
+            // Menghasilkan suara "ding~" naik (C-E-G chord)
+            // tanpa perlu file MP3/audio
+            // ==========================================
+            function playWelcomeSound() {
+                try {
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioContextClass) return;
+
+                    const ctx = new AudioContextClass();
+                    const now = ctx.currentTime;
+
+                    // Tone 1: C5 (523.25 Hz)
+                    const osc1 = ctx.createOscillator();
+                    const gain1 = ctx.createGain();
+                    osc1.type = 'sine';
+                    osc1.frequency.value = 523.25;
+                    gain1.gain.setValueAtTime(0, now);
+                    gain1.gain.linearRampToValueAtTime(0.15, now + 0.05);
+                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+                    osc1.connect(gain1).connect(ctx.destination);
+                    osc1.start(now);
+                    osc1.stop(now + 1);
+
+                    // Tone 2: E5 (659.25 Hz) — delay 150ms
+                    const osc2 = ctx.createOscillator();
+                    const gain2 = ctx.createGain();
+                    osc2.type = 'sine';
+                    osc2.frequency.value = 659.25;
+                    gain2.gain.setValueAtTime(0, now + 0.15);
+                    gain2.gain.linearRampToValueAtTime(0.12, now + 0.20);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+                    osc2.connect(gain2).connect(ctx.destination);
+                    osc2.start(now + 0.15);
+                    osc2.stop(now + 1.2);
+
+                    // Tone 3: G5 (783.99 Hz) — delay 300ms, softest
+                    const osc3 = ctx.createOscillator();
+                    const gain3 = ctx.createGain();
+                    osc3.type = 'sine';
+                    osc3.frequency.value = 783.99;
+                    gain3.gain.setValueAtTime(0, now + 0.30);
+                    gain3.gain.linearRampToValueAtTime(0.10, now + 0.35);
+                    gain3.gain.exponentialRampToValueAtTime(0.001, now + 1.3);
+                    osc3.connect(gain3).connect(ctx.destination);
+                    osc3.start(now + 0.30);
+                    osc3.stop(now + 1.5);
+                } catch (e) {
+                    // Silent fail — kalau browser blokir audio, tidak masalah
+                    console.log('Welcome sound not played:', e);
+                }
+            }
+
+            // Play sound saat overlay muncul (delay 200ms biar sinkron dengan animasi)
+            setTimeout(playWelcomeSound, 200);
+
+            // Auto-remove overlay setelah selesai (3.1 detik)
+            setTimeout(function () {
+                var overlay = document.getElementById('welcomeOverlay');
+                if (overlay) overlay.remove();
+            }, 3100);
+        </script>
+    @endif
 
     @php
         $user = auth()->user();
