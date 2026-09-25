@@ -180,45 +180,6 @@
             color: #4e73df;
         }
 
-        .remember-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 24px;
-        }
-
-        .remember-check {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .remember-check input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            margin: 0 8px 0 0;
-            cursor: pointer;
-            accent-color: #4e73df;
-        }
-
-        .remember-check span {
-            font-size: 13.5px;
-            color: #4a5568;
-            font-weight: 500;
-        }
-
-        .badge-7 {
-            display: inline-block;
-            background: #eef2ff;
-            color: #4e73df;
-            font-size: 10.5px;
-            font-weight: 700;
-            padding: 3px 8px;
-            border-radius: 6px;
-            margin-left: 6px;
-        }
-
         .btn-login {
             width: 100%;
             height: 52px;
@@ -394,14 +355,6 @@
                             aria-label="Tampilkan / sembunyikan password">
                         <i class="fas fa-eye" id="toggleIcon"></i>
                     </button>
-                </div>
-
-                {{-- Remember Me --}}
-                <div class="remember-row">
-                    <label class="remember-check">
-                        <input type="checkbox" name="remember" id="rememberCheck" value="1" {{ old('remember') ? 'checked' : '' }}>
-                        <span>Ingat saya <span class="badge-7">7 hari</span></span>
-                    </label>
                 </div>
 
                 {{-- Submit --}}
