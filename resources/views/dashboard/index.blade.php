@@ -28,7 +28,6 @@
 
     <!-- 1. KPI CARDS -->
     <div class="row">
-        <!-- Project Aktif -->
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-primary shadow h-100 py-2">
                 <div class="card-body">
@@ -43,7 +42,6 @@
             </div>
         </div>
 
-        <!-- Task Hari Ini -->
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-success shadow h-100 py-2">
                 <div class="card-body">
@@ -58,7 +56,6 @@
             </div>
         </div>
 
-        <!-- Total Anggota -->
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-info shadow h-100 py-2">
                 <div class="card-body">
@@ -73,7 +70,6 @@
             </div>
         </div>
 
-        <!-- Content Ready Stock -->
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-warning shadow h-100 py-2">
                 <div class="card-body">
@@ -91,7 +87,6 @@
 
     <!-- 2. GRAFIK PRODUKTIVITAS & PERINGKAT ANGGOTA -->
     <div class="row">
-        <!-- Grafik Trend Task Selesai -->
         <div class="col-xl-8 col-lg-7">
             <div class="card shadow mb-4">
                 <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
@@ -118,12 +113,13 @@
                 </div>
                 <div class="card-body px-3" style="height: 360px; overflow-y: auto;">
 
-                    {{-- ============ CSS UNTUK RANK ITEM ============ --}}
+                    {{-- ============ CSS RANK ITEM ============ --}}
                     <style>
                         .rank-item {
                             transition: all 0.2s ease;
                             position: relative;
                             border: 1px solid transparent;
+                            cursor: pointer;
                         }
                         .rank-item:hover {
                             transform: translateY(-2px);
@@ -177,6 +173,42 @@
                         .rank-badge-normal {
                             background: #6c757d;
                         }
+
+                        /* ========================================= */
+                        /* PROFILE POPUP (Fixed, via JS)              */
+                        /* ========================================= */
+                        #profilePopup {
+                            position: fixed;
+                            width: 280px;
+                            background: #fff;
+                            border-radius: 14px;
+                            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25), 0 6px 15px rgba(0, 0, 0, 0.1);
+                            opacity: 0;
+                            visibility: hidden;
+                            transition: opacity 0.2s ease, transform 0.2s ease;
+                            transform: translateY(-5px);
+                            z-index: 999999;
+                            pointer-events: none;
+                            overflow: hidden;
+                        }
+                        #profilePopup.show {
+                            opacity: 1;
+                            visibility: visible;
+                            transform: translateY(0);
+                            pointer-events: auto;
+                        }
+                        #profilePopup::after {
+                            content: '';
+                            position: absolute;
+                            right: -8px;
+                            top: 50%;
+                            transform: translateY(-50%);
+                            width: 0;
+                            height: 0;
+                            border-top: 8px solid transparent;
+                            border-bottom: 8px solid transparent;
+                            border-left: 8px solid #fff;
+                        }
                     </style>
                     {{-- ============ END CSS ============ --}}
 
@@ -202,15 +234,37 @@
                                     $badgeClass = 'rank-badge-normal';
                                     $rankIcon = null;
                                 }
+
+                                $memberAvatarUrl = $member->avatar
+                                    ? asset('storage/avatars/' . $member->avatar)
+                                    : null;
+
+                                $memberBgUrl = $member->background_image
+                                    ? asset('storage/backgrounds/' . $member->background_image)
+                                    : null;
+
+                                $completedProjectsCount = $member->projects()->where('status', 'Completed')->count();
                             @endphp
 
-                            <div class="list-group-item d-flex justify-content-between align-items-center px-3 mb-2 rounded rank-item {{ $rankClass }}">
-                                <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
+                            <div class="list-group-item d-flex justify-content-between align-items-center px-3 mb-2 rounded rank-item {{ $rankClass }}"
+                                 data-member-id="{{ $member->id }}"
+                                 data-profile-url="{{ route('profile.show', $member->id) }}"
+                                 data-name="{{ $member->name }}"
+                                 data-jabatan="{{ $member->jabatan ?? '' }}"
+                                 data-division="{{ $member->division ?? 'Tanpa Divisi' }}"
+                                 data-avatar="{{ $memberAvatarUrl }}"
+                                 data-bg="{{ $memberBgUrl }}"
+                                 data-gradient="{{ $member->theme_gradient }}"
+                                 data-task-count="{{ $member->contributed_tasks_count }}"
+                                 data-project-count="{{ $completedProjectsCount }}"
+                                 data-login-days="{{ $member->total_login_days ?? 0 }}"
+                                 data-initials="{{ strtoupper(substr($member->name, 0, 2)) }}"
+                                 onclick="window.location=this.dataset.profileUrl">
 
-                                    {{-- Avatar + Badge Rank --}}
+                                <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
                                     <div class="position-relative mr-3">
-                                        @if($member->avatar)
-                                            <img src="{{ asset('storage/avatars/' . $member->avatar) }}"
+                                        @if($memberAvatarUrl)
+                                            <img src="{{ $memberAvatarUrl }}"
                                                  alt="{{ $member->name }}"
                                                  class="rounded-circle shadow-sm"
                                                  style="width: 46px; height: 46px; object-fit: cover; border: 2px solid #fff;">
@@ -221,7 +275,6 @@
                                             </div>
                                         @endif
 
-                                        {{-- Badge rank di pojok kanan bawah avatar --}}
                                         <span class="rank-badge {{ $badgeClass }}">
                                             @if($rankIcon)
                                                 <i class="fas {{ $rankIcon }}"></i>
@@ -231,7 +284,6 @@
                                         </span>
                                     </div>
 
-                                    {{-- Nama & Divisi --}}
                                     <div style="min-width: 0; flex: 1;">
                                         <div class="font-weight-bold text-dark text-truncate" style="font-size: 14px;">
                                             {{ $member->name }}
@@ -243,7 +295,6 @@
                                     </div>
                                 </div>
 
-                                {{-- Badge Poin (Kontributor) --}}
                                 @if($member->contributed_tasks_count > 0)
                                     <span class="badge badge-success badge-pill px-3 py-2 ml-2"
                                           style="font-size: 12px; white-space: nowrap;"
@@ -272,7 +323,6 @@
 
     <!-- 3. AKTIVITAS DIVISI & PROJECT BERJALAN -->
     <div class="row">
-        <!-- Aktivitas Divisi -->
         <div class="col-lg-6 mb-4">
             <div class="card shadow mb-4">
                 <div class="card-header py-3">
@@ -305,7 +355,6 @@
             </div>
         </div>
 
-        <!-- Project Berjalan dengan Tinggi Sama & Scroll Dropdown -->
         <div class="col-lg-6 mb-4">
             <div class="card shadow mb-4">
                 <div class="card-header py-3">
@@ -318,7 +367,6 @@
                                 <span class="font-weight-bold text-gray-800">
                                     <a href="{{ route('projects.show', $proj->id) }}">{{ $proj->name }}</a>
                                 </span>
-                                {{-- Badge Status Dinamis --}}
                                 @if($proj->status == 'On Progress')
                                     <span class="badge badge-warning">On Progress</span>
                                 @elseif($proj->status == 'Review')
@@ -343,9 +391,7 @@
         </div>
     </div>
 
-    <!-- ================================================= -->
-    <!-- 4. ⭐ BARU: Task Selesai (Group by Day)           -->
-    <!-- ================================================= -->
+    <!-- 4. Task Selesai (Group by Day) -->
     <div class="row">
         <div class="col-12">
             <div class="card shadow mb-4">
@@ -358,11 +404,8 @@
                     </span>
                 </div>
                 <div class="card-body" style="height: 600px; overflow-y: auto; background-color: #f8f9fa;">
-
                     @forelse($completedTasksByDay as $day)
-                        {{-- Card per hari --}}
                         <div class="mb-3 bg-white rounded shadow-sm" style="border-left: 4px solid #1cc88a;">
-                            {{-- Header Hari --}}
                             <div class="px-3 py-2 d-flex justify-content-between align-items-center border-bottom"
                                  style="background-color: #f0f8f5;">
                                 <div class="d-flex align-items-center">
@@ -375,15 +418,12 @@
                                     {{ $day['count'] }} Task
                                 </span>
                             </div>
-
-                            {{-- List Task --}}
                             <div class="p-2">
                                 @foreach($day['tasks'] as $task)
                                     <div class="d-flex justify-content-between align-items-start px-2 py-2 mb-1 rounded"
                                          style="transition: all 0.15s;"
                                          onmouseover="this.style.backgroundColor='#f0f3ff';"
                                          onmouseout="this.style.backgroundColor='transparent';">
-
                                         <div class="d-flex align-items-start flex-grow-1" style="min-width: 0;">
                                             <i class="fas fa-check-circle text-success mt-1 mr-2" style="flex-shrink: 0;"></i>
                                             <div style="min-width: 0; flex: 1;">
@@ -396,8 +436,6 @@
                                                         {{ $task->project->name ?? '-' }}
                                                     </a>
                                                 </small>
-
-                                                {{-- Kontributor --}}
                                                 @if($task->contributors->count() > 0)
                                                     <div class="mt-1">
                                                         @foreach($task->contributors as $contributor)
@@ -409,8 +447,6 @@
                                                 @endif
                                             </div>
                                         </div>
-
-                                        {{-- Jam Selesai --}}
                                         <span class="badge badge-light border text-muted ml-2" style="font-size: 11px; white-space: nowrap; flex-shrink: 0;">
                                             <i class="fas fa-clock mr-1"></i>
                                             {{ \Carbon\Carbon::parse($task->completed_at)->format('H:i') }}
@@ -426,8 +462,43 @@
                             <small class="text-muted">Coba ubah filter waktu di atas.</small>
                         </div>
                     @endforelse
-
                 </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ===================================================== --}}
+    {{-- PROFILE POPUP (Fixed, akan diisi via JS) --}}
+    {{-- ===================================================== --}}
+    <div id="profilePopup">
+        <div id="popupBg" style="height: 60px; position: relative; overflow: hidden; border-radius: 14px 14px 0 0;"></div>
+        <div style="margin-top: -32px; text-align: center; position: relative; z-index: 2;">
+            <div id="popupAvatarWrap"></div>
+        </div>
+        <div style="text-align: center; padding: 10px 14px 14px;">
+            <div id="popupName" style="font-weight: 700; font-size: 14.5px; color: #1a1a2e; line-height: 1.3;"></div>
+            <div id="popupJabatan" style="font-size: 11px; color: #f59f0b; font-weight: 600; margin-top: 4px; display: none;"></div>
+            <div id="popupDivision" style="font-size: 11.5px; color: #8492a6; margin-top: 4px;"></div>
+
+            <div style="border-top: 1px solid #eee; margin-top: 10px; padding-top: 10px; display: flex; justify-content: space-around;">
+                <div style="flex: 1;">
+                    <div id="popupTasks" style="font-weight: 700; font-size: 14px; color: #4e73df;">0</div>
+                    <div style="font-size: 10px; color: #8492a6; margin-top: 2px;">Task</div>
+                </div>
+                <div style="flex: 1; border-left: 1px solid #eee; border-right: 1px solid #eee;">
+                    <div id="popupProjects" style="font-weight: 700; font-size: 14px; color: #1cc88a;">0</div>
+                    <div style="font-size: 10px; color: #8492a6; margin-top: 2px;">Project</div>
+                </div>
+                <div style="flex: 1;">
+                    <div id="popupLogins" style="font-weight: 700; font-size: 14px; color: #f59f0b;">0</div>
+                    <div style="font-size: 10px; color: #8492a6; margin-top: 2px;">Login</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #eee;">
+                <span style="font-size: 10.5px; color: #4e73df; font-weight: 600;">
+                    <i class="fas fa-external-link-alt mr-1"></i>Klik untuk buka profil
+                </span>
             </div>
         </div>
     </div>
@@ -435,6 +506,107 @@
     <!-- Script Chart.js -->
     <script src="{{ asset('sb-admin-2/vendor/chart.js/Chart.min.js') }}"></script>
     <script>
+        // ==========================================
+        // PROFILE POPUP SCRIPT
+        // ==========================================
+        (function() {
+            const popup = document.getElementById('profilePopup');
+            const popupBg = document.getElementById('popupBg');
+            const popupAvatarWrap = document.getElementById('popupAvatarWrap');
+            const popupName = document.getElementById('popupName');
+            const popupJabatan = document.getElementById('popupJabatan');
+            const popupDivision = document.getElementById('popupDivision');
+            const popupTasks = document.getElementById('popupTasks');
+            const popupProjects = document.getElementById('popupProjects');
+            const popupLogins = document.getElementById('popupLogins');
+
+            let hoverTimeout = null;
+
+            document.querySelectorAll('.rank-item').forEach(function(item) {
+                item.addEventListener('mouseenter', function() {
+                    clearTimeout(hoverTimeout);
+                    const rect = this.getBoundingClientRect();
+                    const data = this.dataset;
+
+                    // Background
+                    if (data.bg) {
+                        popupBg.style.background = '#eee';
+                        popupBg.innerHTML = '<img src="' + data.bg + '" style="width: 100%; height: 100%; object-fit: cover;">';
+                    } else {
+                        popupBg.style.background = data.gradient;
+                        popupBg.innerHTML = '';
+                    }
+
+                    // Avatar
+                    if (data.avatar) {
+                        popupAvatarWrap.innerHTML = '<img src="' + data.avatar + '" alt="" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">';
+                    } else {
+                        popupAvatarWrap.innerHTML = '<div style="width: 64px; height: 64px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #fff; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.15); background: ' + data.gradient + ';">' + data.initials + '</div>';
+                    }
+
+                    // Info
+                    popupName.textContent = data.name;
+                    popupDivision.textContent = data.division;
+
+                    if (data.jabatan) {
+                        popupJabatan.style.display = 'block';
+                        popupJabatan.innerHTML = '<i class="fas fa-briefcase mr-1"></i>' + data.jabatan;
+                    } else {
+                        popupJabatan.style.display = 'none';
+                    }
+
+                    // Stats
+                    popupTasks.textContent = data.taskCount;
+                    popupProjects.textContent = data.projectCount;
+                    popupLogins.textContent = data.loginDays;
+
+                    // Position
+                    const popupWidth = 280;
+                    const popupHeight = 280;
+                    const gap = 15;
+
+                    let left = rect.left - popupWidth - gap;
+                    let top = rect.top + (rect.height / 2) - (popupHeight / 2);
+
+                    // Kalau popup keluar layar kiri → tampilkan di kanan
+                    if (left < 10) {
+                        left = rect.right + gap;
+                        popup.style.setProperty('--arrow-side', 'left');
+                    } else {
+                        popup.style.setProperty('--arrow-side', 'right');
+                    }
+
+                    // Kalau popup keluar layar atas
+                    if (top < 10) top = 10;
+
+                    // Kalau popup keluar layar bawah
+                    if (top + popupHeight > window.innerHeight - 10) {
+                        top = window.innerHeight - popupHeight - 10;
+                    }
+
+                    popup.style.left = left + 'px';
+                    popup.style.top = top + 'px';
+
+                    hoverTimeout = setTimeout(function() {
+                        popup.classList.add('show');
+                    }, 150);
+                });
+
+                item.addEventListener('mouseleave', function() {
+                    clearTimeout(hoverTimeout);
+                    popup.classList.remove('show');
+                });
+            });
+
+            // Hide popup saat scroll
+            window.addEventListener('scroll', function() {
+                popup.classList.remove('show');
+            }, true);
+        })();
+
+        // ==========================================
+        // CHART
+        // ==========================================
         var ctx = document.getElementById("productivityChart");
         var productivityChart = new Chart(ctx, {
             type: 'line',
