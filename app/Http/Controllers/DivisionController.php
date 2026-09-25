@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\ProjectTask;
 use App\Models\DailyReport;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class DivisionController extends Controller
@@ -91,8 +92,9 @@ class DivisionController extends Controller
         $dailyReports = $query->orderBy('report_date', 'desc')->get();
 
         // === Daftar tahun tersedia untuk filter ===
-        // SQLite tidak punya function YEAR() → pakai Carbon parse di PHP
-        $availableYears = Project::where('status', 'Completed')
+        // ⭐ FIX: pakai DB::table() untuk bypass global scope di Model Project
+        $availableYears = DB::table('projects')
+            ->where('status', 'Completed')
             ->whereNotNull('completed_at')
             ->pluck('completed_at')
             ->map(fn($date) => (int) Carbon::parse($date)->format('Y'))
@@ -164,7 +166,7 @@ class DivisionController extends Controller
             }
         }
 
-        // ⭐ Set completed_at kalau Completed, reset kalau bukan
+        // Set completed_at kalau Completed, reset kalau bukan
         $updateData = ['status' => $newStatus];
         if ($newStatus === 'Completed') {
             $updateData['completed_at'] = now();
