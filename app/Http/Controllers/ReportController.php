@@ -96,7 +96,7 @@ class ReportController extends Controller
                 ->unique();
 
             // ==========================================
-            // Project Dirilis = project BARU yang dibuat di periode
+            // Project Baru = project yang dibuat di periode
             // ==========================================
             $projectsCreatedThisWeek = Project::whereIn('id', $projectIds)
                 ->whereBetween('created_at', [$start, $end])
@@ -135,8 +135,8 @@ class ReportController extends Controller
                 ->count();
 
             // ==========================================
-            // ⭐ FIX #6: Overdue di-filter hanya yang deadline dalam periode
-            //           (kalau mau semua overdue, ganti jadi tanpa filter tanggal)
+            // ⭐ FIX #6: Overdue — project dengan status Overdue / deadline lewat
+            //           (semua yang belum Completed & deadline < end periode)
             // ==========================================
             $overdue = Project::whereIn('id', $projectIds)
                 ->where('status', '!=', 'Completed')
@@ -144,30 +144,50 @@ class ReportController extends Controller
                 ->count();
 
             // ==========================================
-            // Kendala dari daily_reports
+            // ⭐ FIX BUG BARU: Ambil SEMUA kendala dalam periode
+            //                Gabung dengan tanggal: [dd/mm] masalah
             // ==========================================
-            $latestReport = DailyReport::whereBetween('report_date', [$start, $end])
+            $reports = DailyReport::whereBetween('report_date', [$startDate, $endDate])
                 ->where(function ($q) use ($divName, $cleanDivName) {
                     $q->where('division', 'like', "%{$divName}%")
                       ->orWhere('division', 'like', "%{$cleanDivName}%");
                 })
-                ->orderBy('report_date', 'desc')
-                ->first();
+                ->orderBy('report_date', 'asc')
+                ->get();
 
-            $issues = ($latestReport && !empty(trim($latestReport->problems)))
-                ? $latestReport->problems
+            $problemList = [];
+            foreach ($reports as $r) {
+                if (!empty(trim($r->problems))) {
+                    $dateShort = Carbon::parse($r->report_date)->format('d/m');
+                    $problemList[] = "[{$dateShort}] " . trim($r->problems);
+                }
+            }
+
+            $issues = count($problemList) > 0
+                ? implode("\n", $problemList)
                 : "Belum ada laporan";
 
-            $prevReport = DailyReport::whereBetween('report_date', [$prevStart, $prevEnd])
+            // ==========================================
+            // ⭐ FIX BUG BARU: Kendala pekan sebelumnya — gabungkan semua
+            // ==========================================
+            $prevReports = DailyReport::whereBetween('report_date', [$prevStartDate, $prevEndDate])
                 ->where(function ($q) use ($divName, $cleanDivName) {
                     $q->where('division', 'like', "%{$divName}%")
                       ->orWhere('division', 'like', "%{$cleanDivName}%");
                 })
-                ->orderBy('report_date', 'desc')
-                ->first();
+                ->orderBy('report_date', 'asc')
+                ->get();
 
-            $prevIssues = ($prevReport && !empty(trim($prevReport->problems)))
-                ? $prevReport->problems
+            $prevProblemList = [];
+            foreach ($prevReports as $r) {
+                if (!empty(trim($r->problems))) {
+                    $dateShort = Carbon::parse($r->report_date)->format('d/m');
+                    $prevProblemList[] = "[{$dateShort}] " . trim($r->problems);
+                }
+            }
+
+            $prevIssues = count($prevProblemList) > 0
+                ? implode("\n", $prevProblemList)
                 : "Belum ada laporan";
 
             $divisionPerformance[] = [

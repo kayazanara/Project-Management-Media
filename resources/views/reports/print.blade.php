@@ -73,6 +73,7 @@
         .text-success { color: #1cc88a; font-weight: bold; }
         .text-danger { color: #e74a3b; font-weight: bold; }
         .font-weight-bold { font-weight: bold; }
+        .issue-cell { vertical-align: top; white-space: pre-line; }
         
         .no-print {
             text-align: center;
@@ -168,9 +169,9 @@
             <tbody>
                 @foreach($divisions as $div)
                 <tr>
-                    <td class="font-weight-bold">{{ $div['name'] }}</td>
-                    <td>{{ $div['issues'] }}</td>
-                    <td>{{ $div['prev_issues'] }}</td>
+                    <td class="font-weight-bold" style="vertical-align: top;">{{ $div['name'] }}</td>
+                    <td class="issue-cell">{!! nl2br(e($div['issues'])) !!}</td>
+                    <td class="issue-cell">{!! nl2br(e($div['prev_issues'])) !!}</td>
                 </tr>
                 @endforeach
             </tbody>
@@ -201,7 +202,7 @@
             // Menambahkan <br> di depan setiap section-title khusus untuk format Word agar ada jarak 1 enter nyata
             content = content.replace(/<div class="section-title">/g, '<br><div style="font-weight: bold; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase;">');
 
-            var header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Laporan Kinerja</title><style>body{font-family:'Times New Roman'; font-size:11pt;} h2,h3,p{text-align:center;} table{border-collapse:collapse; width:100%; margin-bottom:15px;} th, td{border:1px solid black; padding:5px 8px; text-align:left;} th{background-color:#f2f2f2; text-align:center;}</style></head><body>";
+            var header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Laporan Kinerja</title><style>body{font-family:'Times New Roman'; font-size:11pt;} h2,h3,p{text-align:center;} table{border-collapse:collapse; width:100%; margin-bottom:15px;} th, td{border:1px solid black; padding:5px 8px; text-align:left; vertical-align:top;} th{background-color:#f2f2f2; text-align:center;} .issue-cell{white-space:pre-line;}</style></head><body>";
             var footer = "</body></html>";
             var sourceHTML = header + content + footer;
 
