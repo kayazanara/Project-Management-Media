@@ -382,10 +382,41 @@
         </div>
     </div>
 
-    <!-- Riwayat Project Selesai -->
+    <!-- Riwayat Project Selesai (Completed Projects) -->
     <div class="card shadow mb-4 border-left-success">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-success"><i class="fas fa-check-circle mr-1"></i> Riwayat Project Selesai (Completed)</h6>
+        <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+            <h6 class="m-0 font-weight-bold text-success">
+                <i class="fas fa-check-circle mr-1"></i> Riwayat Project Selesai (Completed)
+            </h6>
+
+            {{-- Filter Bulan & Tahun --}}
+            <form action="{{ route('division.show', $divisionName) }}" method="GET" class="form-inline">
+                <input type="hidden" name="filter" value="{{ $currentFilter }}">
+
+                <select name="completed_month" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
+                    <option value="">-- Semua Bulan --</option>
+                    @for($m = 1; $m <= 12; $m++)
+                        <option value="{{ $m }}" {{ $filterMonth == $m ? 'selected' : '' }}>
+                            {{ \Carbon\Carbon::create()->month($m)->translatedFormat('F') }}
+                        </option>
+                    @endfor
+                </select>
+
+                <select name="completed_year" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
+                    <option value="">-- Semua Tahun --</option>
+                    @foreach($availableYears as $year)
+                        <option value="{{ $year }}" {{ $filterYear == $year ? 'selected' : '' }}>
+                            {{ $year }}
+                        </option>
+                    @endforeach
+                </select>
+
+                @if($filterMonth || $filterYear)
+                    <a href="{{ route('division.show', $divisionName) }}" class="btn btn-secondary btn-sm" title="Reset Filter">
+                        <i class="fas fa-sync-alt"></i>
+                    </a>
+                @endif
+            </form>
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -394,8 +425,10 @@
                         <tr>
                             <th>No</th>
                             <th>Nama Project</th>
-                            <th>Status Workflow</th>
+                            <th>Mulai</th>
                             <th>Deadline</th>
+                            <th>Tanggal Selesai</th>
+                            <th>Durasi</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -404,17 +437,41 @@
                         <tr>
                             <td>{{ $index + 1 }}</td>
                             <td><strong>{{ $compProj->name }}</strong></td>
-                            <td><span class="badge badge-success">Completed</span></td>
+                            <td>{{ $compProj->start_date }}</td>
                             <td>{{ $compProj->deadline }}</td>
+                            <td>
+                                @if($compProj->completed_at)
+                                    <span class="badge badge-success">
+                                        <i class="fas fa-calendar-check mr-1"></i>
+                                        {{ \Carbon\Carbon::parse($compProj->completed_at)->format('d M Y') }}
+                                    </span>
+                                @else
+                                    <span class="text-muted small">-</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($compProj->completed_at && $compProj->start_date)
+                                    @php
+                                        $start = \Carbon\Carbon::parse($compProj->start_date);
+                                        $end = \Carbon\Carbon::parse($compProj->completed_at);
+                                        $days = $start->diffInDays($end);
+                                    @endphp
+                                    <span class="badge badge-info">
+                                        <i class="fas fa-clock mr-1"></i>{{ $days }} hari
+                                    </span>
+                                @else
+                                    <span class="text-muted small">-</span>
+                                @endif
+                            </td>
                             <td class="text-center">
                                 <a href="{{ route('projects.show', $compProj->id) }}" class="btn btn-info btn-sm" title="Lihat Detail Project">
-                                    <i class="fas fa-eye"></i> Buka Project
+                                    <i class="fas fa-eye"></i> Buka
                                 </a>
                             </td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="5" class="text-center text-muted">Belum ada project yang selesai untuk divisi ini.</td>
+                            <td colspan="7" class="text-center text-muted">Belum ada project yang selesai untuk filter ini.</td>
                         </tr>
                         @endforelse
                     </tbody>

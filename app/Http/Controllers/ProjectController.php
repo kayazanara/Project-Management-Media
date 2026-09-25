@@ -49,6 +49,7 @@ class ProjectController extends Controller
                     $q->where('status', 'Completed');
                 },
             ])
+            ->orderBy('completed_at', 'desc')
             ->get();
 
         $countPlanning = Project::where('status', 'Planning')->count();
@@ -308,6 +309,8 @@ class ProjectController extends Controller
      * - Overdue: hanya bisa → Completed, hanya oleh Manager
      * - Santri: Planning → On Progress → Review (hanya ini)
      * - Manager: bebas semua transisi (kecuali dari Completed)
+     *
+     * ⭐ Update: auto-set `completed_at` saat status = Completed
      */
     public function updateProjectStatus(Request $request, $id)
     {
@@ -353,7 +356,18 @@ class ProjectController extends Controller
             }
         }
 
-        $project->update(['status' => $newStatus]);
+        // === ⭐ Auto-set completed_at kalau berubah ke Completed ===
+        $updateData = ['status' => $newStatus];
+
+        if ($newStatus === 'Completed') {
+            $updateData['completed_at'] = now();
+        } else {
+            // Kalau diubah dari Completed ke status lain (tidak mungkin karena Rule 1)
+            // atau diubah dari status lain, reset completed_at
+            $updateData['completed_at'] = null;
+        }
+
+        $project->update($updateData);
 
         return redirect()->route('projects.show', $id)
             ->with('success', 'Status workflow project berhasil diperbarui menjadi ' . $newStatus . '!');

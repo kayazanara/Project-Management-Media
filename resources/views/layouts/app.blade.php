@@ -399,10 +399,9 @@
                                         <span class="badge badge-primary px-2 py-1" style="font-size: 12px;">{{ $user->role ?? '-' }}</span>
                                         <span class="badge badge-secondary px-2 py-1" style="font-size: 12px;">{{ $user->divisi ?? $user->division ?? '-' }}</span>
                                     </p>
-                                    <button class="btn btn-outline-primary btn-sm mt-1" data-toggle="modal" data-target="#changeAvatarModal" style="font-size: 12px;">
-                                        <i class="fas fa-camera mr-1"></i> Ganti Foto Profil
-                                    </button>
-                                </div>
+                                    <a href="{{ route('profile.show', $user->id) }}" class="btn btn-outline-primary btn-sm mt-1" style="font-size: 12px;">
+                                        <i class="fas fa-user-edit mr-1"></i> Edit Profil
+                                    </a>
 
                                 <div class="dropdown-divider"></div>
 

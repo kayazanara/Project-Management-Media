@@ -23,14 +23,12 @@ class AuthController extends Controller
             'password' => ['required'],
         ]);
 
-        // Tidak pakai "remember me" — sesi fixed sampai 7 pagi
         if (Auth::attempt($credentials, false)) {
             $request->session()->regenerate();
-
-            // ⭐ Simpan waktu login untuk cek batas 7 pagi
             $request->session()->put('login_at', now()->toDateTimeString());
 
-            // ⭐ Trigger welcome animation via flash session
+            Auth::user()->trackDailyLogin();
+
             return redirect()->intended('/dashboard')
                 ->with('success', 'Berhasil login!')
                 ->with('show_welcome', true)

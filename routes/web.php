@@ -8,6 +8,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ContentController;
 use App\Http\Controllers\DivisionController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ProfileController;
 
 Route::get('/', function () {
     return redirect('/login');
@@ -30,7 +31,6 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('divisi.access:pembina')
         ->name('projects.create');
 
-    // Route dinamis setelah route statis
     Route::get('/projects/{id}', [ProjectController::class, 'show'])->name('projects.show');
     Route::post('/projects/{id}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
     Route::patch('/tasks/{id}/toggle', [ProjectController::class, 'toggleTask'])->name('tasks.toggle');
@@ -69,16 +69,23 @@ Route::middleware(['auth'])->group(function () {
     });
 
     // ==========================================
-    // 3. MONITORING DIVISI (Tim & Laporan)
+    // 3. MONITORING DIVISI
     // ==========================================
     Route::get('/division/{divisionName}', [DivisionController::class, 'show'])->name('division.show');
     Route::post('/division/{divisionName}/reports', [DivisionController::class, 'storeReport'])->name('division.reports.store');
     Route::delete('/division/reports/{id}', [DivisionController::class, 'destroyReport'])->name('division.reports.destroy');
 
-    // Tombol "Ajukan Review" dari halaman Divisi
     Route::patch('/division/{divisionName}/projects/{id}/status', [DivisionController::class, 'updateProjectStatus'])
         ->name('division.projects.updateStatus');
 
-    // Profil avatar
+    // ==========================================
+    // 4. PROFILE
+    // ==========================================
+    Route::get('/profile/{id}', [ProfileController::class, 'show'])->name('profile.show');
+    Route::get('/my-profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::put('/my-profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::post('/my-profile/background', [ProfileController::class, 'updateBackground'])->name('profile.updateBackground');
+    Route::patch('/profile/{id}/jabatan', [ProfileController::class, 'updateJabatan'])->name('profile.updateJabatan');
+
     Route::post('/profile/update-avatar', [AuthController::class, 'updateProfile'])->name('profile.updateAvatar');
 });
