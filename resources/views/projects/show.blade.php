@@ -9,6 +9,16 @@
         $isKetuaMedia = $user->isKetuaMedia();
         $isPembina = $user->isPembina();
 
+        // ⚡ NEW: Cek apakah user boleh batalkan complete
+        $canReopen = false;
+        if ($project->status === 'Completed') {
+            if ($isManager) {
+                $canReopen = true;
+            } elseif ($isKepalaDivisi && $project->users->contains($user->id)) {
+                $canReopen = true;
+            }
+        }
+
         $backUrl = route('projects.index');
         if (!$isManager) {
             if (str_contains($userDiv, 'lapangan')) {
@@ -39,7 +49,7 @@
         $completedTasksList = $project->tasks->where('status', 'Completed');
         $pendingTasksList = $project->tasks->where('status', '!=', 'Completed');
 
-        // ⚡ Fallback: kalau controller tidak mengirim, hitung sendiri
+        // Fallback: kalau controller tidak mengirim, hitung sendiri
         if (!isset($projectContentsCount)) {
             $projectContentsCount = \App\Models\Content::where('project_id', $project->id)->count();
         }
@@ -361,7 +371,7 @@
                     </div>
                 @endif
 
-                {{-- 8. UPLOAD — ⚡ Dengan guard content + tombol upload --}}
+                {{-- 8. UPLOAD --}}
                 @if($project->status === 'Upload')
                     <div class="py-3">
                         <div class="text-center mb-4">
@@ -378,7 +388,6 @@
                             @endphp
 
                             @if($hasContent)
-                                {{-- Sudah ada konten, boleh complete --}}
                                 <div class="alert alert-success small mb-3">
                                     <i class="fas fa-check-circle mr-1"></i>
                                     <strong>{{ $projectContentsCount }} konten</strong> sudah di-upload untuk project ini. Siap di-complete.
@@ -407,7 +416,6 @@
                                     </form>
                                 </div>
                             @else
-                                {{-- Belum ada konten --}}
                                 <div class="alert alert-warning mb-3">
                                     <h6 class="font-weight-bold mb-2">
                                         <i class="fas fa-exclamation-triangle mr-1"></i>
@@ -438,6 +446,77 @@
                     </div>
                 @endif
 
+            </div>
+        </div>
+    @endif
+
+    {{-- ⚡ PANEL REOPEN (hanya muncul kalau status Completed & user berhak) --}}
+    @if($project->status === 'Completed' && $canReopen)
+        <div class="card shadow mb-4" style="border-left: 4px solid #f6c23e;">
+            <div class="card-header py-3 bg-light">
+                <h6 class="m-0 font-weight-bold text-warning">
+                    <i class="fas fa-undo mr-1"></i> Batalkan Complete
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning small mb-3">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Project ini sudah <strong>Completed</strong>. Kalau ada sesuatu yang perlu diperbaiki atau dilanjutkan, Anda bisa membatalkan complete dan mengembalikannya ke tahap <strong>Review</strong> atau <strong>Upload</strong>.
+                </div>
+
+                <div class="text-center">
+                    <button type="button" class="btn btn-warning" data-toggle="modal" data-target="#reopenModal">
+                        <i class="fas fa-undo mr-1"></i> Batalkan Complete
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {{-- Modal Reopen --}}
+        <div class="modal fade" id="reopenModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <form action="{{ route('projects.reopen', $project->id) }}" method="POST" class="modal-content">
+                    @csrf
+                    @method('PATCH')
+                    <div class="modal-header bg-warning text-white">
+                        <h5 class="modal-title font-weight-bold">
+                            <i class="fas fa-undo mr-1"></i> Batalkan Complete Project
+                        </h5>
+                        <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-light border small mb-3">
+                            <i class="fas fa-info-circle mr-1 text-warning"></i>
+                            Project akan dikembalikan ke tahap yang dipilih. Konten & task <strong>tidak direset</strong>.
+                        </div>
+
+                        <div class="form-group">
+                            <label class="font-weight-bold">Kembalikan ke Tahap <span class="text-danger">*</span></label>
+                            <select name="target_status" class="form-control" required>
+                                <option value="Review" selected>Review — Perlu direview ulang</option>
+                                <option value="Upload">Upload — Perlu tambah konten lagi</option>
+                            </select>
+                            <small class="text-muted">
+                                <strong>Review</strong>: untuk perbaikan hasil, ACC Pembina/Ketua Media akan di-reset.
+                                <strong>Upload</strong>: untuk tambah konten lagi.
+                            </small>
+                        </div>
+
+                        <div class="form-group mb-0">
+                            <label class="font-weight-bold">Catatan Alasan <span class="text-danger">*</span></label>
+                            <textarea name="note" class="form-control" rows="4" minlength="10" required
+                                      placeholder="Contoh: Audio perlu diperbaiki, ada klien minta revisi.">{{ old('note') }}</textarea>
+                            <small class="text-muted">Minimal 10 karakter. Akan dikirim ke Kepala Divisi & anggota project.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
+                        <button type="submit" class="btn btn-warning btn-sm"
+                                onclick="return confirm('Yakin batalkan complete project ini?');">
+                            <i class="fas fa-undo mr-1"></i> Batalkan Complete
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     @endif
@@ -520,11 +599,18 @@
             <div class="card-body">
                 @foreach($allRevisionHistory as $rev)
                     @php
-                        $isReviewRequest = ($rev->type ?? 'revision') === 'review_request';
-                        $borderColor = $isReviewRequest ? 'info' : 'danger';
-                        $badge = $isReviewRequest
-                            ? '<span class="badge badge-info">Pengajuan Review</span>'
-                            : '<span class="badge badge-danger">Catatan Revisi</span>';
+                        $revType = $rev->type ?? 'revision';
+                        if ($revType === 'review_request') {
+                            $borderColor = 'info';
+                            $badge = '<span class="badge badge-info">Pengajuan Review</span>';
+                        } elseif ($revType === 'reopen') {
+                            $borderColor = 'warning';
+                            $badge = '<span class="badge badge-warning">Batalkan Complete</span>';
+                        } else {
+                            $borderColor = 'danger';
+                            $badge = '<span class="badge badge-danger">Catatan Revisi</span>';
+                        }
+                        $isReviewRequest = ($revType === 'review_request');
                     @endphp
                     <div class="border-left border-{{ $borderColor }} pl-3 mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -543,7 +629,7 @@
                             </a>
                         @endif
 
-                        @if(!$isReviewRequest)
+                        @if(!$isReviewRequest && $revType === 'revision')
                             <small class="text-muted">
                                 Status:
                                 @if($rev->resolved_at)
