@@ -68,6 +68,30 @@ class ContentController extends Controller
         return $project->users()->where('users.division', $division)->exists();
     }
 
+    /**
+     * ⚡ HELPER: Tentukan URL redirect setelah upload activity
+     * Manager → /contents (Stock Management)
+     * Kepala Divisi → /division/{divisi sendiri}
+     */
+    private function getRedirectAfterActivity(User $user)
+    {
+        if ($user->isManager()) {
+            return route('contents.index');
+        }
+
+        $divisionMap = [
+            'Lapangan'    => 'Tim Lapangan',
+            'Editing'     => 'Tim Editing',
+            'Broadcast'   => 'Tim Broadcast',
+            'AI Research' => 'Tim AI Research',
+        ];
+
+        $divName = $user->division ?? '';
+        $divisionRouteName = $divisionMap[$divName] ?? 'Tim Lapangan';
+
+        return route('division.show', $divisionRouteName);
+    }
+
     // ============================================================
     // INDEX
     // ============================================================
@@ -329,7 +353,7 @@ class ContentController extends Controller
     }
 
     // ============================================================
-    // UPLOAD STOCK — ⚡ MULTI-ROW
+    // UPLOAD STOCK — MULTI-ROW
     // ============================================================
 
     public function uploadStock(Request $request)
@@ -425,7 +449,7 @@ class ContentController extends Controller
     }
 
     // ============================================================
-    // UPLOAD ACTIVITY
+    // UPLOAD ACTIVITY — ⚡ FIX: Redirect dinamis
     // ============================================================
 
     public function uploadActivity(Request $request)
@@ -467,7 +491,9 @@ class ContentController extends Controller
             'uploaded_at'  => now(),
         ]);
 
-        return redirect()->route('contents.index')
+        // ⚡ FIX: Redirect dinamis (Kepala Divisi → halaman divisinya sendiri)
+        return redirect()
+            ->to($this->getRedirectAfterActivity($user))
             ->with('success', 'Activity berhasil diupload & ditandai Complete!');
     }
 
