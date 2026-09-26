@@ -104,10 +104,6 @@ class WorkdeskController extends Controller
     // HELPER: POIN
     // ============================================================
 
-    /**
-     * Hitung poin per user dalam rentang waktu.
-     * Return: [user_id => ['points' => float, 'tasks' => int]]
-     */
     private function calculatePointsInRange(Carbon $start, Carbon $end): array
     {
         $tasks = ProjectTask::where(function ($q) use ($start, $end) {
@@ -184,6 +180,11 @@ class WorkdeskController extends Controller
         ];
     }
 
+    // ============================================================
+    // ⚡ FIX: Semua kategori UNLIMITED (hapus ->take(5))
+    //          + diffInDays di-round() biar tidak desimal
+    // ============================================================
+
     private function buildActionsForUser(User $user): array
     {
         $actions = [];
@@ -191,7 +192,6 @@ class WorkdeskController extends Controller
         if ($user->isKetuaMedia()) {
             $planningProjects = Project::where('status', Project::STATUS_PLANNING)
                 ->orderBy('created_at', 'asc')
-                ->take(5)
                 ->get();
 
             foreach ($planningProjects as $p) {
@@ -209,7 +209,6 @@ class WorkdeskController extends Controller
 
             $reviewProjects = Project::where('status', Project::STATUS_REVIEW)
                 ->whereNull('approved_by_ketua_at')
-                ->take(5)
                 ->get();
 
             foreach ($reviewProjects as $p) {
@@ -229,7 +228,6 @@ class WorkdeskController extends Controller
         if ($user->isPembina()) {
             $taskReviewProjects = Project::where('status', Project::STATUS_TASK_REVIEW)
                 ->orderBy('created_at', 'asc')
-                ->take(5)
                 ->get();
 
             foreach ($taskReviewProjects as $p) {
@@ -246,7 +244,6 @@ class WorkdeskController extends Controller
             }
 
             $scoringProjects = Project::where('status', Project::STATUS_SCORING)
-                ->take(5)
                 ->get();
 
             foreach ($scoringProjects as $p) {
@@ -264,7 +261,6 @@ class WorkdeskController extends Controller
 
             $reviewProjects = Project::where('status', Project::STATUS_REVIEW)
                 ->whereNull('approved_by_pembina_at')
-                ->take(5)
                 ->get();
 
             foreach ($reviewProjects as $p) {
@@ -282,17 +278,19 @@ class WorkdeskController extends Controller
 
             $overdueProjects = Project::where('is_overdue', true)
                 ->where('status', '!=', Project::STATUS_COMPLETED)
-                ->take(5)
                 ->get();
 
             foreach ($overdueProjects as $p) {
+                // ⚡ FIX: round() biar "Lewat deadline 8 hari" bukan "7.7512..."
+                $daysLate = $p->deadline ? round($p->deadline->diffInDays(now())) : 0;
+
                 $actions[] = [
                     'type' => 'overdue',
                     'priority' => 'critical',
                     'icon' => 'fa-exclamation-triangle',
                     'color' => 'danger',
                     'title' => 'Overdue: ' . $p->name,
-                    'subtitle' => 'Lewat deadline ' . ($p->deadline ? $p->deadline->diffInDays(now()) : 0) . ' hari',
+                    'subtitle' => 'Lewat deadline ' . $daysLate . ' hari',
                     'url' => route('projects.show', $p->id),
                     'cta' => 'Lihat',
                 ];
@@ -301,6 +299,10 @@ class WorkdeskController extends Controller
 
         return $actions;
     }
+
+    // ============================================================
+    // ALERTS (tetap take(5) / take(3) — widget sudah scrollable)
+    // ============================================================
 
     private function buildAlerts(): array
     {
@@ -313,13 +315,15 @@ class WorkdeskController extends Controller
             ->get();
 
         foreach ($overdueProjects as $p) {
+            $daysLate = $p->deadline ? round($p->deadline->diffInDays(now())) : 0;
+
             $alerts[] = [
                 'priority' => 'critical',
                 'icon' => 'fa-exclamation-triangle',
                 'color' => 'danger',
                 'title' => 'Project OVERDUE: ' . $p->name,
                 'message' => 'Deadline ' . ($p->deadline ? $p->deadline->format('d M') : '-')
-                    . ' (' . ($p->deadline ? $p->deadline->diffInDays(now()) : 0) . ' hari lalu)',
+                    . ' (' . $daysLate . ' hari lalu)',
                 'url' => route('projects.show', $p->id),
                 'cta' => 'Lihat',
             ];
@@ -378,7 +382,7 @@ class WorkdeskController extends Controller
     }
 
     // ============================================================
-    // PERFORMANCE
+    // PERFORMANCE — completion rate konsisten + clamp 100%
     // ============================================================
 
     private function buildDivisionPerformance(): array
@@ -388,6 +392,8 @@ class WorkdeskController extends Controller
 
         $startOfWeek = now()->startOfWeek();
         $endOfWeek = now()->endOfWeek();
+        $prevStart = now()->subWeek()->startOfWeek();
+        $prevEnd = now()->subWeek()->endOfWeek();
 
         foreach ($divisions as $divName => $meta) {
             $memberIds = User::where('division', 'like', "%{$divName}%")->pluck('id');
@@ -409,7 +415,13 @@ class WorkdeskController extends Controller
             }
 
             $totalTasks = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->whereBetween('task_date', [$startOfWeek, $endOfWeek])
+                ->where(function ($q) use ($startOfWeek, $endOfWeek) {
+                    $q->whereBetween('task_date', [$startOfWeek, $endOfWeek])
+                      ->orWhere(function ($q2) use ($startOfWeek, $endOfWeek) {
+                          $q2->where('status', 'Completed')
+                             ->whereBetween('completed_at', [$startOfWeek, $endOfWeek]);
+                      });
+                })
                 ->count();
 
             $completedTasks = ProjectTask::whereIn('assigned_to', $memberIds)
@@ -440,16 +452,19 @@ class WorkdeskController extends Controller
                 ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
                 ->count();
 
-            $completionRate = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100) : 0;
-            $onTimeRate = $completedTasks > 0 ? round(($onTimeTasks / $completedTasks) * 100) : 0;
-            $weightedRate = $weightedTotal > 0 ? round(($weightedDone / $weightedTotal) * 100) : 0;
+            $completionRate = $totalTasks > 0
+                ? min(100, round(($completedTasks / $totalTasks) * 100))
+                : 0;
+            $onTimeRate = $completedTasks > 0
+                ? min(100, round(($onTimeTasks / $completedTasks) * 100))
+                : 0;
+            $weightedRate = $weightedTotal > 0
+                ? min(100, round(($weightedDone / $weightedTotal) * 100))
+                : 0;
 
             $performanceScore = round(
                 ($completionRate * 0.4) + ($onTimeRate * 0.4) + ($weightedRate * 0.2)
             );
-
-            $prevStart = now()->subWeek()->startOfWeek();
-            $prevEnd = now()->subWeek()->endOfWeek();
 
             $prevCompleted = ProjectTask::whereIn('assigned_to', $memberIds)
                 ->where('status', 'Completed')
@@ -689,7 +704,6 @@ class WorkdeskController extends Controller
 
     // ============================================================
     // SYSTEM HEALTH
-    // ⚡ FIX: WAHA check pakai X-Api-Key header + deteksi status session
     // ============================================================
 
     private function buildSystemHealth(): array
@@ -701,7 +715,6 @@ class WorkdeskController extends Controller
         $queueCount = \DB::table('jobs')->count();
         $failedJobs = \DB::table('failed_jobs')->count();
 
-        // ⚡ Cek WAHA dengan API key + timeout pendek
         $wahaUrl = rtrim(config('services.waha.url'), '/');
         $wahaKey = config('services.waha.api_key');
         $wahaSession = config('services.waha.session', 'default');
@@ -715,7 +728,6 @@ class WorkdeskController extends Controller
             if ($response->successful()) {
                 $sessions = $response->json();
 
-                // Cari session yang match
                 $matchedSession = null;
                 if (is_array($sessions)) {
                     foreach ($sessions as $s) {
@@ -739,7 +751,6 @@ class WorkdeskController extends Controller
                     };
                 }
             } else {
-                // HTTP error (401, 500, dll)
                 $wahaStatus = match ($response->status()) {
                     401, 403 => 'unauthorized',
                     default  => 'error',
