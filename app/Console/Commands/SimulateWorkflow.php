@@ -246,10 +246,15 @@ class SimulateWorkflow extends Command
             return true;
         });
 
+        // ⚡ FIX: tambah note & file_url
         $this->step('1.6 Kepala Divisi: ajukan review', function () use ($users, $project) {
             Auth::setUser($users['kepala_divisi']);
 
-            $request = Request::create("/projects/{$project->id}/request-review", 'PATCH');
+            $request = Request::create("/projects/{$project->id}/request-review", 'PATCH', [
+                'note'     => 'Semua task Lapangan sudah selesai. Video sudah di-edit, mohon dicek color grading & audio.',
+                'file_url' => 'https://example.com/hasil-review.mp4',
+            ]);
+
             app(\App\Http\Controllers\ProjectController::class)
                 ->requestReview($request, $project->id);
 
@@ -278,10 +283,15 @@ class SimulateWorkflow extends Command
             return true;
         });
 
+        // ⚡ FIX: tambah note
         $this->step('1.8 Kepala Divisi: ajukan review ulang (loop)', function () use ($users, $project) {
             Auth::setUser($users['kepala_divisi']);
 
-            $request = Request::create("/projects/{$project->id}/request-review", 'PATCH');
+            $request = Request::create("/projects/{$project->id}/request-review", 'PATCH', [
+                'note'     => 'Revisi sudah selesai. Intro sudah diperbaiki sesuai catatan Pembina.',
+                'file_url' => null,
+            ]);
+
             app(\App\Http\Controllers\ProjectController::class)
                 ->requestReview($request, $project->id);
 
@@ -451,7 +461,6 @@ class SimulateWorkflow extends Command
     {
         $this->startGroup('CONTENT UPLOAD (3 Jenis)');
 
-        // ⚡ FIX: attach users ke project biar guard uploadRaw lolos
         $project = Project::create([
             'name'       => '[SIM] Content Project',
             'start_date' => now()->toDateString(),
@@ -585,7 +594,6 @@ class SimulateWorkflow extends Command
             $response = app(\App\Http\Controllers\WorkdeskController::class)
                 ->index($request);
 
-            // ⚡ FIX: cek render(), bukan getContent()
             if (!method_exists($response, 'render')) {
                 throw new \Exception('Response bukan View (tidak punya render())');
             }
@@ -681,13 +689,14 @@ class SimulateWorkflow extends Command
 
     protected function testNotifierTemplates(): void
     {
-        $this->startGroup('NOTIFIER TEMPLATES (12 Template)');
+        $this->startGroup('NOTIFIER TEMPLATES (14 Template)');
 
         $templates = [
             'projectCreatedTemplate'      => ['Tester', 'Proj', '01 Jan', '07 Jan', 'Tim', 'Brief', 1],
             'taskReviewSubmittedTemplate' => ['Tester', 'Proj', 5, 1],
             'projectReleasedTemplate'     => ['Tester', 'Proj', '07 Jan', 'Tim A', 1],
-            'requestReviewTemplate'       => ['Tester', 'Proj', 'Editing', 1],
+            // ⚡ FIX: tambah argumen note (arg ke-4)
+            'requestReviewTemplate'       => ['Tester', 'Proj', 'Editing', 'Catatan pengantar test minimal 10 karakter.', 1],
             'revisionRequestedTemplate'   => ['Tester', 'Proj', 'Perbaiki intro.', 1],
             'projectApprovedTemplate'     => ['Tester', 'Proj', 1],
             'projectCompletedTemplate'    => ['Tester', 'Proj', 1],
