@@ -35,7 +35,7 @@
                         <span class="badge badge-light text-primary ml-2">{{ count($actions) }}</span>
                     </h6>
                 </div>
-                <div class="card-body" id="actionsContainer">
+                <div class="card-body" id="actionsContainer" style="max-height: 420px; overflow-y: auto; scrollbar-width: thin;">
                     @forelse($actions as $action)
                         <div class="d-flex align-items-start p-3 mb-2 rounded border-left border-{{ $action['color'] }}"
                              style="background-color: #f8f9fa; border-left-width: 4px !important;">
