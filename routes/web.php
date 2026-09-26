@@ -11,6 +11,7 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WorkdeskController;
 use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\MonitoringController;
 
 Route::get('/', function () {
     return redirect('/login');
@@ -39,6 +40,13 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/alerts', [WorkdeskController::class, 'getAlerts'])->name('workdesk.alerts');
         Route::get('/performance', [WorkdeskController::class, 'getPerformance'])->name('workdesk.performance');
         Route::post('/alerts/{id}/read', [WorkdeskController::class, 'markRead'])->name('workdesk.markRead');
+    });
+
+    // ==========================================
+    // MONITORING TIM (Pembina Media only)
+    // ==========================================
+    Route::middleware(['divisi.access:pembina'])->group(function () {
+        Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring.index');
     });
 
     // ==========================================
@@ -94,7 +102,7 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/projects/{id}/status', [ProjectController::class, 'updateProjectStatus'])
         ->name('projects.updateStatus');
 
-    // ⚡ FIX: Ketua Media juga bisa akses Project Management
+    // PROJECT MANAGEMENT (Pembina + Ketua Media)
     Route::middleware(['divisi.access:manager'])->group(function () {
         Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');
         Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
@@ -111,7 +119,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/projects/{id}', [ProjectController::class, 'show'])->name('projects.show');
 
     // ==========================================
-    // ⚡ FIX: TEAM MANAGEMENT (Pembina + Ketua Media)
+    // TEAM MANAGEMENT (Pembina + Ketua Media)
     // ==========================================
     Route::middleware(['divisi.access:manager'])->group(function () {
         Route::get('/team', [TeamController::class, 'index'])->name('team.index');
@@ -155,7 +163,7 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/division/reports/{id}', [DivisionController::class, 'destroyReport'])->name('division.reports.destroy');
 
     // ==========================================
-    // ⚡ FIX: REPORT / CETAK LAPORAN (Pembina + Ketua Media)
+    // REPORT / CETAK LAPORAN (Pembina + Ketua Media)
     // ==========================================
     Route::middleware(['divisi.access:manager'])->group(function () {
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');

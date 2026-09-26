@@ -27,18 +27,18 @@
             overflow-x: hidden;
             z-index: 1000;
 
-            /* ⚡ Sembunyikan scrollbar */
-            scrollbar-width: none;         /* Firefox */
-            -ms-overflow-style: none;       /* IE/Edge lama */
+            /* Sembunyikan scrollbar */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
         }
 
         #accordionSidebar::-webkit-scrollbar {
-            display: none;                  /* Chrome/Safari/Edge */
+            display: none;
             width: 0;
             height: 0;
         }
 
-        /* ⚡ Compress padding biar semua item muat dalam 100vh */
+        /* Compress padding biar semua item muat dalam 100vh */
         #accordionSidebar .sidebar-brand {
             height: auto;
             padding: 12px 1rem;
@@ -51,10 +51,10 @@
         }
 
         #accordionSidebar .nav-item .nav-link {
-            padding: 0.55rem 1rem;         /* dari default ~1rem jadi 0.55rem */
+            padding: 0.55rem 1rem;
         }
         #accordionSidebar .nav-item .nav-link span {
-            font-size: 0.82rem;            /* sedikit dikecilkan */
+            font-size: 0.82rem;
         }
         #accordionSidebar .nav-item .nav-link i {
             font-size: 0.9rem;
@@ -67,7 +67,7 @@
         }
 
         #accordionSidebar hr.sidebar-divider {
-            margin: 0.6rem 1rem;           /* dari 1rem jadi 0.6rem */
+            margin: 0.6rem 1rem;
         }
 
         #accordionSidebar .sidebar-divider.my-0 {
@@ -86,7 +86,6 @@
             font-size: 0.75rem;
         }
 
-        /* Toggle sidebar collapse — item lebih rapi saat collapsed */
         body.sidebar-toggled #accordionSidebar .sidebar-heading,
         body.sidebar-toggled #accordionSidebar span {
             display: none !important;
@@ -188,7 +187,7 @@
             border-bottom: 1px solid rgba(139, 92, 246, 0.08);
         }
 
-        /* ⚡ Scrollbar area konten — ungu tipis, match tema */
+        /* Scrollbar area konten — ungu tipis, match tema */
         #content::-webkit-scrollbar,
         body::-webkit-scrollbar {
             width: 8px;
@@ -429,6 +428,15 @@
                 <a class="nav-link" href="{{ route('workdesk') }}">
                     <i class="fas fa-fw fa-briefcase"></i>
                     <span>Workdesk</span></a>
+            </li>
+            @endif
+
+            {{-- Monitoring Tim (Pembina only) --}}
+            @if($user && $user->isPembina())
+            <li class="nav-item {{ request()->routeIs('monitoring.*') ? 'active' : '' }}">
+                <a class="nav-link" href="{{ route('monitoring.index') }}">
+                    <i class="fas fa-fw fa-chart-bar"></i>
+                    <span>Monitoring Tim</span></a>
             </li>
             @endif
 
