@@ -17,6 +17,15 @@
         </div>
     @endif
 
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            {{ session('error') }}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    @endif
+
     <!-- Statistik Singkat Divisi -->
     <div class="row">
         <div class="col-xl-4 col-md-6 mb-4">
@@ -103,39 +112,49 @@
                         @forelse($projects as $index => $proj)
                         <tr>
                             <td>{{ $index + 1 }}</td>
-                            <td><strong>{{ $proj->name }}</strong></td>
                             <td>
-                                @if($proj->status == 'On Progress')
-                                    <span class="badge badge-warning">On Progress</span>
-                                @elseif($proj->status == 'Review')
-                                    <span class="badge badge-info">Review</span>
-                                @elseif($proj->status == 'Revision')
-                                    <span class="badge badge-primary">Revision</span>
-                                @elseif($proj->status == 'Overdue')
-                                    <span class="badge badge-danger">Overdue</span>
-                                @elseif($proj->status == 'Planning')
-                                    <span class="badge badge-secondary">Planning</span>
-                                @else
-                                    <span class="badge badge-secondary">{{ $proj->status }}</span>
+                                <strong>{{ $proj->name }}</strong>
+                                @if($proj->is_overdue)
+                                    <br><span class="badge badge-danger mt-1">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>OVERDUE
+                                    </span>
                                 @endif
                             </td>
-                            <td>{{ $proj->deadline }}</td>
+                            <td>
+                                <span class="badge badge-{{ $proj->status_badge }}">
+                                    {{ $proj->status }}
+                                </span>
+                            </td>
+                            <td>{{ $proj->deadline?->format('d M Y') ?? '-' }}</td>
                             <td class="text-center">
                                 <a href="{{ route('projects.show', $proj->id) }}" class="btn btn-info btn-sm" title="Lihat Detail & Task">
                                     <i class="fas fa-eye"></i> Buka
                                 </a>
 
-                                {{-- Tombol Ajukan Review: hanya muncul kalau status = On Progress --}}
-                                @if($proj->status == 'On Progress')
-                                    <form action="{{ route('division.projects.updateStatus', ['divisionName' => $divisionName, 'id' => $proj->id]) }}"
+                                {{-- Tombol Ajukan Review: hanya Kepala Divisi & status On Progress --}}
+                                @if($proj->status == 'On Progress' && auth()->user()->isKepalaDivisi())
+                                    <form action="{{ route('projects.requestReview', $proj->id) }}"
                                           method="POST"
                                           class="d-inline"
-                                          onsubmit="return confirm('Ajukan project ini ke tahap Review?\n\nSetelah diajukan, Anda tidak bisa mengubah status lagi (hanya Pembina/Ketua yang bisa).');">
+                                          onsubmit="return confirm('Ajukan project ini ke tahap Review?');">
                                         @csrf
                                         @method('PATCH')
-                                        <input type="hidden" name="status" value="Review">
                                         <button type="submit" class="btn btn-warning btn-sm" title="Ajukan ke Review">
                                             <i class="fas fa-paper-plane"></i> Ajukan Review
+                                        </button>
+                                    </form>
+                                @endif
+
+                                {{-- Tombol Ajukan Review Ulang: hanya Kepala Divisi & status Revision --}}
+                                @if($proj->status == 'Revision' && auth()->user()->isKepalaDivisi())
+                                    <form action="{{ route('projects.requestReview', $proj->id) }}"
+                                          method="POST"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Ajukan review ulang?');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-info btn-sm" title="Ajukan Review Ulang">
+                                            <i class="fas fa-redo"></i> Review Ulang
                                         </button>
                                     </form>
                                 @endif
@@ -152,23 +171,20 @@
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- MONITORING TASK & PROGRESS (GROUP PER PROJECT) -->
-    <!-- ============================================ -->
+    <!-- Monitoring Task & Progress -->
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">Monitoring Task & Progress Anggota Divisi (Aktif)</h6>
         </div>
         <div class="card-body">
 
-            {{-- Filter & Search --}}
             <div class="row mb-3">
                 <div class="col-md-7 mb-2">
                     <div class="input-group">
                         <div class="input-group-prepend">
                             <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
                         </div>
-                        <input type="text" id="taskSearchInput" class="form-control" 
+                        <input type="text" id="taskSearchInput" class="form-control"
                                placeholder="Cari nama task, deskripsi, atau PIC...">
                         <div class="input-group-append">
                             <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" title="Hapus pencarian">
@@ -189,7 +205,6 @@
                 </div>
             </div>
 
-            {{-- Container dengan scroll --}}
             <div id="tasksContainer" style="max-height: 600px; overflow-y: auto; padding-right: 5px;">
                 @php $hasAnyTask = false; @endphp
 
@@ -197,7 +212,6 @@
                     @if($project->tasks->count() > 0)
                         @php $hasAnyTask = true; @endphp
                         <div class="project-group mb-4" data-project-id="{{ $project->id }}">
-                            {{-- Header Project --}}
                             <div class="d-flex align-items-center justify-content-between border-bottom pb-2 mb-3">
                                 <h6 class="m-0 font-weight-bold text-primary">
                                     <i class="fas fa-folder-open mr-1"></i>
@@ -207,21 +221,13 @@
                                 </h6>
                                 <div>
                                     <span class="badge badge-secondary">{{ $project->tasks->count() }} Task</span>
-                                    @if($project->status == 'On Progress')
-                                        <span class="badge badge-warning">On Progress</span>
-                                    @elseif($project->status == 'Overdue')
-                                        <span class="badge badge-danger">Overdue</span>
-                                    @elseif($project->status == 'Review')
-                                        <span class="badge badge-info">Review</span>
-                                    @elseif($project->status == 'Revision')
-                                        <span class="badge badge-primary">Revision</span>
-                                    @else
-                                        <span class="badge badge-secondary">{{ $project->status }}</span>
+                                    <span class="badge badge-{{ $project->status_badge }}">{{ $project->status }}</span>
+                                    @if($project->is_overdue)
+                                        <span class="badge badge-danger">OVERDUE</span>
                                     @endif
                                 </div>
                             </div>
 
-                            {{-- Tabel Task per Project --}}
                             <div class="table-responsive">
                                 <table class="table table-bordered table-sm" width="100%" cellspacing="0">
                                     <thead class="thead-light">
@@ -314,7 +320,6 @@
                     </div>
                 @endif
 
-                {{-- Empty state untuk search --}}
                 <div id="noResults" class="text-center text-muted py-5" style="display: none;">
                     <i class="fas fa-search fa-3x text-gray-300 mb-3"></i>
                     <p class="mb-0">Tidak ada task yang cocok dengan filter/pencarian.</p>
@@ -323,7 +328,7 @@
         </div>
     </div>
 
-    <!-- Daftar Riwayat Laporan Harian Divisi -->
+    <!-- Riwayat Laporan Harian Divisi -->
     <div class="card shadow mb-4">
         <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
             <h6 class="m-0 font-weight-bold text-success">Riwayat Laporan Harian {{ $divisionName }}</h6>
@@ -382,14 +387,13 @@
         </div>
     </div>
 
-    <!-- Riwayat Project Selesai (Completed Projects) -->
+    <!-- Riwayat Project Selesai -->
     <div class="card shadow mb-4 border-left-success">
         <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
             <h6 class="m-0 font-weight-bold text-success">
                 <i class="fas fa-check-circle mr-1"></i> Riwayat Project Selesai (Completed)
             </h6>
 
-            {{-- Filter Bulan & Tahun --}}
             <form action="{{ route('division.show', $divisionName) }}" method="GET" class="form-inline">
                 <input type="hidden" name="filter" value="{{ $currentFilter }}">
 
@@ -437,8 +441,8 @@
                         <tr>
                             <td>{{ $index + 1 }}</td>
                             <td><strong>{{ $compProj->name }}</strong></td>
-                            <td>{{ $compProj->start_date }}</td>
-                            <td>{{ $compProj->deadline }}</td>
+                            <td>{{ $compProj->start_date?->format('d M Y') ?? '-' }}</td>
+                            <td>{{ $compProj->deadline?->format('d M Y') ?? '-' }}</td>
                             <td>
                                 @if($compProj->completed_at)
                                     <span class="badge badge-success">
@@ -480,9 +484,7 @@
         </div>
     </div>
 
-    {{-- ===================================================== --}}
-    {{-- MODAL COMPLETE TASK (PILIH KONTRIBUTOR) --}}
-    {{-- ===================================================== --}}
+    {{-- MODAL COMPLETE TASK --}}
     @foreach($tasks as $task)
         @if($task->status != 'Completed')
             <div class="modal fade" id="completeTaskModal{{ $task->id }}" tabindex="-1" role="dialog" aria-labelledby="completeTaskModalLabel{{ $task->id }}" aria-hidden="true">
@@ -567,9 +569,7 @@
         @endif
     @endforeach
 
-    {{-- ===================================================== --}}
     {{-- MODAL DETAIL LAPORAN HARIAN --}}
-    {{-- ===================================================== --}}
     @foreach($dailyReports ?? [] as $report)
         <div class="modal fade" id="detailReportModal{{ $report->id }}" tabindex="-1" role="dialog" aria-labelledby="detailReportModalLabel{{ $report->id }}" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered" role="document">
@@ -647,19 +647,15 @@
         </div>
     </div>
 
-    {{-- ===================================================== --}}
-    {{-- JS: SEARCH + FILTER PROJECT + MOVE MODAL TO BODY --}}
-    {{-- ===================================================== --}}
+    {{-- JS: SEARCH + FILTER + MOVE MODAL --}}
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // 1. Pindahkan modal ke body (fix layout)
             document.querySelectorAll('.modal').forEach(function (modal) {
                 if (modal.parentElement !== document.body) {
                     document.body.appendChild(modal);
                 }
             });
 
-            // 2. Search & Filter
             const searchInput = document.getElementById('taskSearchInput');
             const projectFilter = document.getElementById('projectFilter');
             const clearBtn = document.getElementById('clearSearchBtn');
@@ -673,7 +669,6 @@
                 document.querySelectorAll('.project-group').forEach(function (group) {
                     const groupProjectId = group.dataset.projectId;
 
-                    // Filter project
                     if (selectedProject && groupProjectId !== selectedProject) {
                         group.style.display = 'none';
                         return;

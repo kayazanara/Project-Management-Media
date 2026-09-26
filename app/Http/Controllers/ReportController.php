@@ -33,9 +33,6 @@ class ReportController extends Controller
             'manager_name' => 'required|string',
         ]);
 
-        // =============================================
-        // ⭐ FIX #3: Pakai startOfDay & endOfDay
-        // =============================================
         $start = Carbon::parse($request->start_date)->startOfDay();
         $end = Carbon::parse($request->end_date)->endOfDay();
 
@@ -44,11 +41,14 @@ class ReportController extends Controller
 
         $startDate = $start->format('Y-m-d');
         $endDate = $end->format('Y-m-d');
+        $prevStartDate = $prevStart->format('Y-m-d');
+        $prevEndDate = $prevEnd->format('Y-m-d');
+
         $pjName = $request->pj_name;
         $managerName = $request->manager_name;
 
         // =============================================
-        // ⭐ FIX #1: Anggota Aktif pakai KONTRIBUTOR (pivot)
+        // Anggota Aktif
         // =============================================
         $totalMembers = User::count();
 
@@ -63,14 +63,15 @@ class ReportController extends Controller
         $activeMembersCount = $activeMemberIds->count();
 
         // =============================================
-        // ⭐ FIX: Content pakai `uploaded_at` (bukan updated_at)
+        // ⚡ FIX: Konten Terposting — pakai COALESCE(uploaded_at, updated_at)
+        //          + status final (Uploaded / Archived / Completed)
         // =============================================
-        $postedContentsThisWeek = Content::where('status', 'Uploaded')
-            ->whereBetween('uploaded_at', [$start, $end])
+        $postedContentsThisWeek = Content::whereIn('status', ['Uploaded', 'Archived', 'Completed'])
+            ->whereRaw('COALESCE(uploaded_at, updated_at) BETWEEN ? AND ?', [$start, $end])
             ->count();
 
-        $postedContentsPrevWeek = Content::where('status', 'Uploaded')
-            ->whereBetween('uploaded_at', [$prevStart, $prevEnd])
+        $postedContentsPrevWeek = Content::whereIn('status', ['Uploaded', 'Archived', 'Completed'])
+            ->whereRaw('COALESCE(uploaded_at, updated_at) BETWEEN ? AND ?', [$prevStart, $prevEnd])
             ->count();
 
         // =============================================
@@ -82,29 +83,21 @@ class ReportController extends Controller
         foreach ($divisionList as $divName) {
             $cleanDivName = str_replace('Tim ', '', $divName);
 
-            // ⭐ FIX #2: Pakai kolom `division` (bukan `divisi`)
             $memberIds = User::where(function ($q) use ($divName, $cleanDivName) {
                     $q->where('division', 'like', "%{$cleanDivName}%")
                       ->orWhere('division', 'like', "%{$divName}%");
                 })
                 ->pluck('id');
 
-            // Project yang melibatkan anggota divisi ini
             $projectIds = DB::table('project_user')
                 ->whereIn('user_id', $memberIds)
                 ->pluck('project_id')
                 ->unique();
 
-            // ==========================================
-            // Project Baru = project yang dibuat di periode
-            // ==========================================
             $projectsCreatedThisWeek = Project::whereIn('id', $projectIds)
                 ->whereBetween('created_at', [$start, $end])
                 ->count();
 
-            // ==========================================
-            // ⭐ FIX #4: Task Selesai pakai `completed_at` + KONTRIBUTOR
-            // ==========================================
             $completedTasksThisWeek = ProjectTask::where('status', 'Completed')
                 ->whereBetween('completed_at', [$start, $end])
                 ->whereHas('contributors', function ($q) use ($memberIds) {
@@ -121,9 +114,6 @@ class ReportController extends Controller
                 ->distinct('project_tasks.id')
                 ->count('project_tasks.id');
 
-            // ==========================================
-            // Project Completed pakai `completed_at`
-            // ==========================================
             $completedProjectsThisWeek = Project::whereIn('id', $projectIds)
                 ->where('status', 'Completed')
                 ->whereBetween('completed_at', [$start, $end])
@@ -134,19 +124,12 @@ class ReportController extends Controller
                 ->whereBetween('completed_at', [$prevStart, $prevEnd])
                 ->count();
 
-            // ==========================================
-            // ⭐ FIX #6: Overdue — project dengan status Overdue / deadline lewat
-            //           (semua yang belum Completed & deadline < end periode)
-            // ==========================================
             $overdue = Project::whereIn('id', $projectIds)
                 ->where('status', '!=', 'Completed')
                 ->where('deadline', '<', $end->toDateString())
                 ->count();
 
-            // ==========================================
-            // ⭐ FIX BUG BARU: Ambil SEMUA kendala dalam periode
-            //                Gabung dengan tanggal: [dd/mm] masalah
-            // ==========================================
+            // Kendala pekan ini
             $reports = DailyReport::whereBetween('report_date', [$startDate, $endDate])
                 ->where(function ($q) use ($divName, $cleanDivName) {
                     $q->where('division', 'like', "%{$divName}%")
@@ -167,9 +150,7 @@ class ReportController extends Controller
                 ? implode("\n", $problemList)
                 : "Belum ada laporan";
 
-            // ==========================================
-            // ⭐ FIX BUG BARU: Kendala pekan sebelumnya — gabungkan semua
-            // ==========================================
+            // Kendala pekan sebelumnya
             $prevReports = DailyReport::whereBetween('report_date', [$prevStartDate, $prevEndDate])
                 ->where(function ($q) use ($divName, $cleanDivName) {
                     $q->where('division', 'like', "%{$divName}%")

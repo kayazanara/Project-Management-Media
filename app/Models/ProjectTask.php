@@ -13,6 +13,8 @@ class ProjectTask extends Model
 
     protected $casts = [
         'completed_at' => 'datetime',
+        'scored_at' => 'datetime',
+        'is_approved' => 'boolean',
     ];
 
     /**
@@ -24,7 +26,7 @@ class ProjectTask extends Model
     }
 
     /**
-     * Relasi ke User (PIC / yang ditugaskan) — untuk backward compatibility
+     * Relasi ke User (PIC / yang ditugaskan)
      */
     public function assignedUser()
     {
@@ -38,5 +40,21 @@ class ProjectTask extends Model
     {
         return $this->belongsToMany(User::class, 'project_task_contributors', 'project_task_id', 'user_id')
             ->withTimestamps();
+    }
+
+    /**
+     * Scope: sudah di-scoring Pembina
+     */
+    public function scopeScored($query)
+    {
+        return $query->whereNotNull('scored_at');
+    }
+
+    /**
+     * Scope: sudah di-approve
+     */
+    public function scopeApproved($query)
+    {
+        return $query->where('is_approved', true);
     }
 }

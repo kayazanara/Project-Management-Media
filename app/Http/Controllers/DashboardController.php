@@ -96,17 +96,64 @@ class DashboardController extends Controller
                 ->count();
         }
 
-        // 7. Peringkat Anggota (Leaderboard)
-        $topMembers = User::withCount(['contributedTasks' => function ($query) use ($start, $end) {
-            $query->where('status', 'Completed')
-                ->whereBetween('completed_at', [$start, $end]);
-        }])
-            ->orderBy('contributed_tasks_count', 'desc')
-            ->orderBy('name', 'asc')
+        // ==========================================
+        // 7. ⭐ PERINGKAT ANGGOTA — SISTEM POIN
+        // ==========================================
+        // Ambil semua task dalam periode (pakai task_date, fallback created_at)
+        $tasksInPeriod = ProjectTask::where(function ($q) use ($start, $end) {
+                $q->whereBetween('task_date', [$start, $end])
+                  ->orWhere(function ($q2) use ($start, $end) {
+                      $q2->whereNull('task_date')
+                         ->whereBetween('created_at', [$start, $end]);
+                  });
+            })
+            ->with(['contributors:id', 'assignedUser:id'])
             ->get();
 
+        // Hitung poin per user
+        $userPoints = [];
+        $userTaskCounts = [];
+
+        foreach ($tasksInPeriod as $task) {
+            $weight = (float) $task->weight;
+            if ($weight <= 0) {
+                continue;
+            }
+
+            // Tentukan daftar contributor
+            $contributorIds = $task->contributors->pluck('id')->toArray();
+
+            // Fallback ke PIC kalau tidak ada contributor
+            if (empty($contributorIds) && $task->assigned_to) {
+                $contributorIds = [(int) $task->assigned_to];
+            }
+
+            if (empty($contributorIds)) {
+                continue;
+            }
+
+            // Bagi poin rata
+            $pointPerPerson = $weight / count($contributorIds);
+
+            foreach ($contributorIds as $uid) {
+                $userPoints[$uid] = ($userPoints[$uid] ?? 0) + $pointPerPerson;
+                $userTaskCounts[$uid] = ($userTaskCounts[$uid] ?? 0) + 1;
+            }
+        }
+
+        // Ambil user yang punya poin, map, dan sort
+        $topMembers = User::whereIn('id', array_keys($userPoints))
+            ->get()
+            ->map(function ($u) use ($userPoints, $userTaskCounts) {
+                $u->points = round($userPoints[$u->id] ?? 0);
+                $u->task_points_count = $userTaskCounts[$u->id] ?? 0;
+                return $u;
+            })
+            ->sortByDesc('points')
+            ->values();
+
         // ==========================================
-        // 8. ⭐ BARU: Task Selesai (Grouped by Day)
+        // 8. Task Selesai (Grouped by Day)
         // ==========================================
         $completedTasksRaw = ProjectTask::where('status', 'Completed')
             ->whereBetween('completed_at', [$start, $end])
@@ -114,7 +161,6 @@ class DashboardController extends Controller
             ->orderBy('completed_at', 'desc')
             ->get();
 
-        // Group by tanggal (Y-m-d)
         $completedTasksByDay = $completedTasksRaw
             ->groupBy(fn($task) => Carbon::parse($task->completed_at)->format('Y-m-d'))
             ->map(function ($tasks, $date) {

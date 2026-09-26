@@ -6,32 +6,65 @@ use Illuminate\Http\Request;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\ProjectTask;
+use App\Models\ProjectRevision;
 use App\Events\ProjectCreated;
+use App\Services\ProjectWorkflowService;
+use App\Services\WhatsappNotifier;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class ProjectController extends Controller
 {
-    /**
-     * Cek apakah user adalah Manager (Pembina/Ketua/Admin/Ustadz)
-     */
+    protected ProjectWorkflowService $workflow;
+    protected WhatsappNotifier $notifier;
+
+    public function __construct(
+        ProjectWorkflowService $workflow,
+        WhatsappNotifier $notifier
+    ) {
+        $this->workflow = $workflow;
+        $this->notifier = $notifier;
+    }
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+
     private function isManager($user): bool
     {
-        if (!$user) return false;
-        $userDiv = strtolower(trim($user->division ?? ''));
-        $userRole = strtolower(trim($user->role ?? ''));
-        return str_contains($userDiv, 'pembina')
-            || str_contains($userDiv, 'ketua')
-            || $userRole === 'administrator'
-            || str_contains($userRole, 'ustadz');
+        return $user && $user->isManager();
     }
+
+    private function isKepalaDivisi($user): bool
+    {
+        return $user && $user->isKepalaDivisi();
+    }
+
+    private function notifyUsers($users, string $type, ?int $projectId, callable $buildMessage): void
+    {
+        foreach ($users as $user) {
+            if (empty($user->phone)) {
+                continue;
+            }
+            try {
+                $message = $buildMessage($this->notifier, $user);
+                $this->notifier->sendAndLog($user, $projectId, $type, $message);
+            } catch (\Throwable $e) {
+                Log::warning("[Workflow Notif] Gagal kirim {$type} ke user {$user->id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    // ============================================================
+    // INDEX
+    // ============================================================
 
     public function index()
     {
-        Project::where('status', '!=', 'Completed')
-            ->where('status', '!=', 'Overdue')
-            ->where('deadline', '<', now()->toDateString())
-            ->update(['status' => 'Overdue']);
+        $this->workflow->syncOverdueFlags();
 
-        $projects = Project::where('status', '!=', 'Completed')
+        $projects = Project::where('status', '!=', Project::STATUS_COMPLETED)
             ->with('users')
             ->withCount([
                 'tasks as total_tasks_count',
@@ -39,9 +72,10 @@ class ProjectController extends Controller
                     $q->where('status', 'Completed');
                 },
             ])
+            ->orderBy('deadline', 'asc')
             ->get();
 
-        $completedProjects = Project::where('status', 'Completed')
+        $completedProjects = Project::where('status', Project::STATUS_COMPLETED)
             ->with('users')
             ->withCount([
                 'tasks as total_tasks_count',
@@ -52,32 +86,39 @@ class ProjectController extends Controller
             ->orderBy('completed_at', 'desc')
             ->get();
 
-        $countPlanning = Project::where('status', 'Planning')->count();
-        $countOnProgress = Project::where('status', 'On Progress')->count();
-        $countReview = Project::where('status', 'Review')->count();
-        $countRevision = Project::where('status', 'Revision')->count();
-        $countOverdue = Project::where('status', 'Overdue')->count();
+        $counts = [
+            'planning'    => Project::where('status', Project::STATUS_PLANNING)->count(),
+            'task_review' => Project::where('status', Project::STATUS_TASK_REVIEW)->count(),
+            'scoring'     => Project::where('status', Project::STATUS_SCORING)->count(),
+            'on_progress' => Project::where('status', Project::STATUS_ON_PROGRESS)->count(),
+            'review'      => Project::where('status', Project::STATUS_REVIEW)->count(),
+            'revision'    => Project::where('status', Project::STATUS_REVISION)->count(),
+            'approved'    => Project::where('status', Project::STATUS_APPROVED)->count(),
+            'upload'      => Project::where('status', Project::STATUS_UPLOAD)->count(),
+            'overdue'     => Project::where('is_overdue', true)
+                ->where('status', '!=', Project::STATUS_COMPLETED)
+                ->count(),
+        ];
 
-        $data = [
+        return view('projects.index', [
             'title' => 'Project Management',
             'projects' => $projects,
             'completedProjects' => $completedProjects,
-            'countPlanning' => $countPlanning,
-            'countOnProgress' => $countOnProgress,
-            'countReview' => $countReview,
-            'countRevision' => $countRevision,
-            'countOverdue' => $countOverdue,
-        ];
-
-        return view('projects.index', $data);
+            'counts' => $counts,
+        ]);
     }
+
+    // ============================================================
+    // CREATE / STORE
+    // ============================================================
 
     public function create()
     {
         $users = User::all();
+
         return view('projects.create', [
             'title' => 'Tambah Project Baru',
-            'users' => $users
+            'users' => $users,
         ]);
     }
 
@@ -104,7 +145,7 @@ class ProjectController extends Controller
             'name' => $request->name,
             'start_date' => $request->start_date,
             'deadline' => $request->deadline,
-            'status' => 'Planning',
+            'status' => Project::STATUS_PLANNING,
             'reference_link' => $request->reference_link,
             'brief' => $request->brief,
         ]);
@@ -113,8 +154,13 @@ class ProjectController extends Controller
 
         ProjectCreated::dispatch($project);
 
-        return redirect()->route('projects.index')->with('success', 'Project baru berhasil ditambahkan!');
+        return redirect()->route('projects.show', $project->id)
+            ->with('success', 'Project baru berhasil dibuat! Menunggu Ketua Media menyusun task.');
     }
+
+    // ============================================================
+    // EDIT / UPDATE / DESTROY
+    // ============================================================
 
     public function edit($id)
     {
@@ -124,7 +170,7 @@ class ProjectController extends Controller
         return view('projects.edit', [
             'title' => 'Edit Project',
             'project' => $project,
-            'users' => $users
+            'users' => $users,
         ]);
     }
 
@@ -152,7 +198,8 @@ class ProjectController extends Controller
 
         $project->users()->sync($request->user_ids);
 
-        return redirect()->route('projects.index')->with('success', 'Project berhasil diupdate!');
+        return redirect()->route('projects.show', $id)
+            ->with('success', 'Project berhasil diupdate!');
     }
 
     public function destroy($id)
@@ -164,15 +211,25 @@ class ProjectController extends Controller
         return redirect()->route('projects.index')->with('success', 'Project berhasil dihapus!');
     }
 
+    // ============================================================
+    // SHOW (Detail Project)
+    // ============================================================
+
     public function show($id)
     {
-        $project = Project::with(['users', 'tasks.assignedUser', 'tasks.contributors'])->findOrFail($id);
+        $project = Project::with([
+            'users',
+            'tasks.assignedUser',
+            'tasks.contributors',
+            'revisions.user',
+        ])->findOrFail($id);
 
-        if ($project->status != 'Completed' && $project->deadline < now()->toDateString()) {
-            if ($project->status != 'Overdue') {
-                $project->update(['status' => 'Overdue']);
-                $project->refresh();
-            }
+        if ($project->status !== Project::STATUS_COMPLETED
+            && $project->deadline
+            && $project->deadline->isPast()
+            && !$project->is_overdue) {
+            $project->update(['is_overdue' => true]);
+            $project->refresh();
         }
 
         $totalTasks = $project->tasks->count();
@@ -181,13 +238,32 @@ class ProjectController extends Controller
 
         $users = User::all();
 
+        $availableActions = $this->workflow->getAvailableActions($project, Auth::user());
+
+        // Ambil pengajuan review terakhir (untuk ditampilkan di tahap Review)
+        $latestReviewRequest = $project->revisions()
+            ->where('type', 'review_request')
+            ->first();
+
+        // Ambil catatan revisi terakhir (untuk ditampilkan di tahap Revision)
+        $latestRevision = $project->revisions()
+            ->where('type', 'revision')
+            ->first();
+
         return view('projects.show', [
             'title' => 'Detail Project: ' . $project->name,
             'project' => $project,
             'progress' => $progress,
-            'users' => $users
+            'users' => $users,
+            'availableActions' => $availableActions,
+            'latestReviewRequest' => $latestReviewRequest,
+            'latestRevision' => $latestRevision,
         ]);
     }
+
+    // ============================================================
+    // TASK CRUD
+    // ============================================================
 
     public function storeTask(Request $request, $id)
     {
@@ -196,6 +272,7 @@ class ProjectController extends Controller
             'assigned_to' => 'nullable|exists:users,id',
             'task_date' => 'nullable|date',
             'description' => 'nullable|string',
+            'division' => 'nullable|string',
         ]);
 
         ProjectTask::create([
@@ -213,11 +290,7 @@ class ProjectController extends Controller
     public function toggleTask(Request $request, $id)
     {
         $task = ProjectTask::findOrFail($id);
-        $project = $task->project;
 
-        // ============================================
-        // KASUS 1: REOPEN (Completed → Pending)
-        // ============================================
         if ($task->status == 'Completed') {
             $task->status = 'Pending';
             $task->completed_at = null;
@@ -226,9 +299,6 @@ class ProjectController extends Controller
             return redirect()->back()->with('success', 'Task dibuka kembali. Kontributor tetap tersimpan.');
         }
 
-        // ============================================
-        // KASUS 2: COMPLETE (Pending → Completed)
-        // ============================================
         $request->validate([
             'contributors' => 'required|array|min:1',
             'contributors.*' => 'exists:users,id',
@@ -244,19 +314,6 @@ class ProjectController extends Controller
         $task->contributors()->sync($request->contributors);
 
         $names = User::whereIn('id', $request->contributors)->pluck('name')->implode(', ');
-
-        // ============================================
-        // CEK: Apakah ini task pertama yang selesai
-        // & status project masih Planning?
-        // → Tawarkan ubah ke On Progress
-        // ============================================
-        $completedCount = $project->tasks()->where('status', 'Completed')->count();
-
-        if ($completedCount === 1 && $project->status === 'Planning') {
-            return redirect()->route('projects.show', $project->id)
-                ->with('success', "Task selesai! Kontributor: {$names}")
-                ->with('suggest_on_progress', true);
-        }
 
         return redirect()->back()->with('success', "Task selesai! Kontributor: {$names}");
     }
@@ -277,7 +334,7 @@ class ProjectController extends Controller
         return view('projects.edit-task', [
             'title' => 'Edit Task: ' . $task->title,
             'task' => $task,
-            'project' => $task->project
+            'project' => $task->project,
         ]);
     }
 
@@ -301,75 +358,397 @@ class ProjectController extends Controller
         return redirect()->route('projects.show', $task->project_id)->with('success', 'Task berhasil diperbarui!');
     }
 
-    /**
-     * Update status workflow project — dengan validasi role & transisi.
-     *
-     * Aturan:
-     * - Completed: tidak bisa diubah lagi
-     * - Overdue: hanya bisa → Completed, hanya oleh Manager
-     * - Santri: Planning → On Progress → Review (hanya ini)
-     * - Manager: bebas semua transisi (kecuali dari Completed)
-     *
-     * ⭐ Update: auto-set `completed_at` saat status = Completed
-     */
-    public function updateProjectStatus(Request $request, $id)
+    // ============================================================
+    // WORKFLOW: 1. SUBMIT TASK REVIEW (Ketua Media)
+    // ============================================================
+
+    public function submitTaskReview($id)
     {
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        if (!$user->isKetuaMedia()) {
+            return back()->with('error', 'Hanya Ketua Media yang bisa ajukan task review.');
+        }
+
+        if ($project->status !== Project::STATUS_PLANNING) {
+            return back()->with('error', 'Project tidak dalam tahap Planning.');
+        }
+
+        $taskCount = $project->tasks()->count();
+        if ($taskCount === 0) {
+            return back()->with('error', 'Susun minimal 1 task sebelum ajukan ke Pembina.');
+        }
+
+        $project->update(['status' => Project::STATUS_TASK_REVIEW]);
+
+        $pembinaUsers = User::where('division_role', 'pembina')
+            ->where('status', 'Aktif')
+            ->get();
+
+        $this->notifyUsers(
+            $pembinaUsers,
+            'task_review_submitted',
+            $project->id,
+            fn($notifier, $u) => $notifier->taskReviewSubmittedTemplate(
+                $u->name,
+                $project->name,
+                $taskCount,
+                $project->id
+            )
+        );
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', "Task berhasil diajukan ke Pembina Media ({$taskCount} task). Menunggu scoring.");
+    }
+
+    // ============================================================
+    // WORKFLOW: 2. SUBMIT SCORING (Pembina)
+    // ============================================================
+
+    public function submitScoring(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        if (!$user->isPembina()) {
+            return back()->with('error', 'Hanya Pembina Media yang bisa melakukan scoring.');
+        }
+
+        if ($project->status !== Project::STATUS_TASK_REVIEW) {
+            return back()->with('error', 'Project tidak dalam tahap Task Review.');
+        }
+
         $request->validate([
-            'status' => 'required|string|in:Planning,On Progress,Review,Revision,Completed,Overdue',
+            'tasks' => 'required|array',
+            'tasks.*.id' => 'required|exists:project_tasks,id',
+            'tasks.*.weight' => 'required|integer|min:1',
+            'tasks.*.is_approved' => 'nullable|boolean',
         ]);
 
+        foreach ($request->tasks as $taskData) {
+            $task = ProjectTask::where('id', $taskData['id'])
+                ->where('project_id', $id)
+                ->first();
+
+            if ($task) {
+                $task->update([
+                    'weight' => $taskData['weight'],
+                    'is_approved' => isset($taskData['is_approved']) && $taskData['is_approved'] ? true : false,
+                    'scored_at' => now(),
+                ]);
+            }
+        }
+
+        $project->update([
+            'status' => Project::STATUS_SCORING,
+            'scored_at' => now(),
+        ]);
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', 'Scoring berhasil disimpan. Siap dirilis!');
+    }
+
+    // ============================================================
+    // WORKFLOW: 3. RELEASE (Pembina)
+    // ============================================================
+
+    public function release($id)
+    {
         $project = Project::findOrFail($id);
-        $user = auth()->user();
-        $isManager = $this->isManager($user);
-        $newStatus = $request->status;
-        $oldStatus = $project->status;
+        $user = Auth::user();
 
-        // === Rule 1: Project Completed → tidak bisa diubah ===
-        if ($oldStatus === 'Completed') {
-            return redirect()->back()->with('error', 'Project sudah selesai dan tidak bisa diubah lagi.');
+        if (!$user->isPembina()) {
+            return back()->with('error', 'Hanya Pembina Media yang bisa merilis project.');
         }
 
-        // === Rule 2: Project Overdue → hanya Completed (oleh Manager) ===
-        if ($oldStatus === 'Overdue') {
-            if (!$isManager) {
-                return redirect()->back()->with('error', 'Project Overdue hanya bisa diubah oleh Pembina/Ketua Media.');
-            }
-            if ($newStatus !== 'Completed') {
-                return redirect()->back()->with('error', 'Project Overdue hanya bisa diubah ke Completed.');
-            }
+        if ($project->status !== Project::STATUS_SCORING) {
+            return back()->with('error', 'Project tidak dalam tahap Scoring.');
         }
 
-        // === Rule 3: Santri → hanya transisi terbatas ===
-        if (!$isManager) {
-            $allowedTransitions = [
-                'Planning'    => ['On Progress'],
-                'On Progress' => ['Review'],
-                'Review'      => ['On Progress'],
-                'Revision'    => ['Review'],
-            ];
-
-            $isAllowed = isset($allowedTransitions[$oldStatus])
-                && in_array($newStatus, $allowedTransitions[$oldStatus]);
-
-            if (!$isAllowed) {
-                return redirect()->back()->with('error', "Anda tidak punya akses untuk mengubah status dari {$oldStatus} ke {$newStatus}.");
-            }
+        if (!$this->workflow->isReadyToRelease($project)) {
+            return back()->with('error', 'Semua task harus di-scoring & di-approve sebelum rilis.');
         }
 
-        // === ⭐ Auto-set completed_at kalau berubah ke Completed ===
-        $updateData = ['status' => $newStatus];
+        $project->update([
+            'status' => Project::STATUS_ON_PROGRESS,
+            'released_at' => now(),
+        ]);
 
-        if ($newStatus === 'Completed') {
-            $updateData['completed_at'] = now();
-        } else {
-            // Kalau diubah dari Completed ke status lain (tidak mungkin karena Rule 1)
-            // atau diubah dari status lain, reset completed_at
-            $updateData['completed_at'] = null;
+        $memberIds = $project->users()->pluck('users.id')->toArray();
+
+        $recipients = User::where(function ($q) use ($memberIds) {
+                $q->whereIn('id', $memberIds)
+                  ->orWhere('division_role', 'kepala_divisi');
+            })
+            ->where('status', 'Aktif')
+            ->get();
+
+        $deadlineStr = $project->deadline
+            ? $project->deadline->translatedFormat('d F Y')
+            : '-';
+
+        $listAnggota = $project->users()->pluck('name')->implode(', ');
+        if (empty($listAnggota)) {
+            $listAnggota = '-';
+        }
+
+        $this->notifyUsers(
+            $recipients,
+            'project_released',
+            $project->id,
+            fn($notifier, $u) => $notifier->projectReleasedTemplate(
+                $u->name,
+                $project->name,
+                $deadlineStr,
+                $listAnggota,
+                $project->id
+            )
+        );
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', 'Project berhasil dirilis! Tim sudah bisa mulai bekerja.');
+    }
+
+    // ============================================================
+    // WORKFLOW: 4. REQUEST REVIEW (Kepala Divisi)
+    // + Catatan pengantar + Link file hasil
+    // ============================================================
+
+    public function requestReview(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        if (!$user->isKepalaDivisi()) {
+            return back()->with('error', 'Hanya Kepala Divisi yang bisa ajukan review.');
+        }
+
+        $allowedStatuses = [Project::STATUS_ON_PROGRESS, Project::STATUS_REVISION];
+        if (!in_array($project->status, $allowedStatuses, true)) {
+            return back()->with('error', 'Project tidak dalam tahap On Progress atau Revision.');
+        }
+
+        $request->validate([
+            'note'     => 'required|string|min:10',
+            'file_url' => 'nullable|string|max:500',
+        ], [
+            'note.required' => 'Catatan pengantar wajib diisi.',
+            'note.min'      => 'Catatan pengantar minimal 10 karakter.',
+        ]);
+
+        // Simpan pengajuan review
+        ProjectRevision::create([
+            'project_id' => $project->id,
+            'user_id'    => $user->id,
+            'type'       => 'review_request',
+            'note'       => $request->note,
+            'file_url'   => $request->file_url,
+        ]);
+
+        $project->update(['status' => Project::STATUS_REVIEW]);
+
+        // Notif WA ke Pembina + Ketua Media
+        $recipients = User::whereIn('division_role', ['pembina', 'ketua_media'])
+            ->where('status', 'Aktif')
+            ->get();
+
+        $divisiName = $user->division ?? '-';
+
+        $this->notifyUsers(
+            $recipients,
+            'request_review',
+            $project->id,
+            fn($notifier, $u) => $notifier->requestReviewTemplate(
+                $u->name,
+                $project->name,
+                $divisiName,
+                $request->note,
+                $project->id
+            )
+        );
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', 'Project diajukan untuk review. Menunggu persetujuan Pembina & Ketua Media.');
+    }
+
+    // ============================================================
+    // WORKFLOW: 5. REQUEST REVISION (Pembina / Ketua Media)
+    // ============================================================
+
+    public function requestRevision(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        if (!$user->isManager()) {
+            return back()->with('error', 'Hanya Pembina/Ketua Media yang bisa minta revisi.');
+        }
+
+        if ($project->status !== Project::STATUS_REVIEW) {
+            return back()->with('error', 'Project tidak dalam tahap Review.');
+        }
+
+        $request->validate([
+            'note' => 'required|string|min:10',
+        ], [
+            'note.required' => 'Catatan revisi wajib diisi.',
+            'note.min' => 'Catatan revisi minimal 10 karakter.',
+        ]);
+
+        ProjectRevision::create([
+            'project_id' => $project->id,
+            'user_id'    => $user->id,
+            'type'       => 'revision',
+            'note'       => $request->note,
+        ]);
+
+        $project->update([
+            'status' => Project::STATUS_REVISION,
+            'approved_by_pembina_at' => null,
+            'approved_by_ketua_at' => null,
+        ]);
+
+        $memberIds = $project->users()->pluck('users.id')->toArray();
+
+        $recipients = User::where(function ($q) use ($memberIds) {
+                $q->where('division_role', 'kepala_divisi')
+                  ->orWhereIn('id', $memberIds);
+            })
+            ->where('status', 'Aktif')
+            ->get();
+
+        $this->notifyUsers(
+            $recipients,
+            'revision_requested',
+            null,
+            fn($notifier, $u) => $notifier->revisionRequestedTemplate(
+                $u->name,
+                $project->name,
+                $request->note,
+                $project->id
+            )
+        );
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', 'Catatan revisi tersimpan. Project masuk tahap Revision.');
+    }
+
+    // ============================================================
+    // WORKFLOW: 6. APPROVE (Pembina / Ketua Media)
+    // ============================================================
+
+    public function approve($id)
+    {
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        if (!$user->isManager()) {
+            return back()->with('error', 'Hanya Pembina/Ketua Media yang bisa menyetujui project.');
+        }
+
+        if ($project->status !== Project::STATUS_REVIEW) {
+            return back()->with('error', 'Project tidak dalam tahap Review.');
+        }
+
+        $updateData = [];
+
+        if ($user->isPembina() && !$project->approved_by_pembina_at) {
+            $updateData['approved_by_pembina_at'] = now();
+        }
+
+        if ($user->isKetuaMedia() && !$project->approved_by_ketua_at) {
+            $updateData['approved_by_ketua_at'] = now();
+        }
+
+        if (empty($updateData)) {
+            return back()->with('error', 'Anda sudah menyetujui project ini sebelumnya.');
         }
 
         $project->update($updateData);
+        $project->refresh();
+
+        if ($project->approved_by_pembina_at && $project->approved_by_ketua_at) {
+
+            $this->workflow->resolveOpenRevisions($project);
+
+            $project->update(['status' => Project::STATUS_APPROVED]);
+            $project->update(['status' => Project::STATUS_UPLOAD]);
+
+            $recipients = User::where('division_role', 'kepala_divisi')
+                ->where('status', 'Aktif')
+                ->get();
+
+            $this->notifyUsers(
+                $recipients,
+                'project_approved',
+                $project->id,
+                fn($notifier, $u) => $notifier->projectApprovedTemplate(
+                    $u->name,
+                    $project->name,
+                    $project->id
+                )
+            );
+
+            return redirect()->route('projects.show', $id)
+                ->with('success', '🎉 Project disetujui kedua pihak! Berlanjut ke tahap Upload.');
+        }
 
         return redirect()->route('projects.show', $id)
-            ->with('success', 'Status workflow project berhasil diperbarui menjadi ' . $newStatus . '!');
+            ->with('success', 'Persetujuan Anda tersimpan. Menunggu persetujuan pihak lainnya.');
+    }
+
+    // ============================================================
+    // WORKFLOW: 7. MARK COMPLETE
+    // ============================================================
+
+    public function markComplete($id)
+    {
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        if (!$user->isManager() && !$user->isKepalaDivisi()) {
+            return back()->with('error', 'Hanya Pembina/Ketua Media/Kepala Divisi yang bisa mark complete.');
+        }
+
+        if ($project->status !== Project::STATUS_UPLOAD) {
+            return back()->with('error', 'Project tidak dalam tahap Upload.');
+        }
+
+        $project->update([
+            'status' => Project::STATUS_COMPLETED,
+            'completed_at' => now(),
+            'is_overdue' => false,
+        ]);
+
+        $recipients = User::where(function ($q) {
+                $q->where('division_role', 'kepala_divisi')
+                  ->orWhere('division_role', 'pembina');
+            })
+            ->where('status', 'Aktif')
+            ->get();
+
+        $this->notifyUsers(
+            $recipients,
+            'project_completed',
+            $project->id,
+            fn($notifier, $u) => $notifier->projectCompletedTemplate(
+                $u->name,
+                $project->name,
+                $project->id
+            )
+        );
+
+        return redirect()->route('projects.index')
+            ->with('success', '🎉 Project selesai!');
+    }
+
+    // ============================================================
+    // LEGACY
+    // ============================================================
+
+    public function updateProjectStatus(Request $request, $id)
+    {
+        return back()->with('error', 'Gunakan tombol aksi workflow di halaman detail project.');
     }
 }

@@ -17,7 +17,7 @@
         </div>
     @endif
 
-    <!-- Statistik Jumlah Proyek Berdasarkan Status -->
+    {{-- Statistik Jumlah Proyek Berdasarkan Status (9 Status + Overdue Flag) --}}
     <div class="row">
         <div class="col-xl-2 col-md-4 mb-4">
             <div class="card border-left-secondary shadow h-100 py-2">
@@ -25,9 +25,37 @@
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">Planning</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $countPlanning }} Project</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['planning'] }} Project</div>
                         </div>
                         <div class="col-auto"><i class="fas fa-hourglass-start fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-2 col-md-4 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Task Review</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['task_review'] }} Project</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-tasks fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-2 col-md-4 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Scoring</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['scoring'] }} Project</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-star fa-2x text-gray-300"></i></div>
                     </div>
                 </div>
             </div>
@@ -39,7 +67,7 @@
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">On Progress</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $countOnProgress }} Project</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['on_progress'] }} Project</div>
                         </div>
                         <div class="col-auto"><i class="fas fa-spinner fa-2x text-gray-300"></i></div>
                     </div>
@@ -53,7 +81,7 @@
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Review</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $countReview }} Project</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['review'] }} Project</div>
                         </div>
                         <div class="col-auto"><i class="fas fa-search fa-2x text-gray-300"></i></div>
                     </div>
@@ -61,36 +89,80 @@
             </div>
         </div>
 
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
+        <div class="col-xl-2 col-md-4 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Revision</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $countRevision }} Project</div>
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Revision</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['revision'] }} Project</div>
                         </div>
                         <div class="col-auto"><i class="fas fa-redo fa-2x text-gray-300"></i></div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="col-xl-3 col-md-6 mb-4">
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Approved</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['approved'] }} Project</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-check-circle fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Upload</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['upload'] }} Project</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-upload fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
             <div class="card border-left-danger shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Overdue</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $countOverdue }} Project</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $counts['overdue'] }} Project</div>
                         </div>
                         <div class="col-auto"><i class="fas fa-exclamation-triangle fa-2x text-gray-300"></i></div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Selesai</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $completedProjects->count() }} Project</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-check-double fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Daftar Proyek Aktif -->
+    {{-- Daftar Proyek Aktif --}}
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">Daftar Proyek Aktif</h6>
@@ -115,26 +187,25 @@
                         @forelse($projects as $index => $project)
                         <tr>
                             <td>{{ $index + 1 }}</td>
-                            <td><strong>{{ $project->name }}</strong></td>
+                            <td>
+                                <strong>{{ $project->name }}</strong>
+                                @if($project->is_overdue)
+                                    <br><span class="badge badge-danger mt-1">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>OVERDUE
+                                    </span>
+                                @endif
+                            </td>
                             <td>
                                 @foreach($project->users as $usr)
                                     <span class="badge badge-info">{{ $usr->name }}</span>
                                 @endforeach
                             </td>
-                            <td>{{ $project->start_date }}</td>
-                            <td>{{ $project->deadline }}</td>
+                            <td>{{ $project->start_date?->format('d M Y') ?? '-' }}</td>
+                            <td>{{ $project->deadline?->format('d M Y') ?? '-' }}</td>
                             <td>
-                                @if($project->status == 'On Progress')
-                                    <span class="badge badge-warning">On Progress</span>
-                                @elseif($project->status == 'Review')
-                                    <span class="badge badge-info">Review</span>
-                                @elseif($project->status == 'Revision')
-                                    <span class="badge badge-primary">Revision</span>
-                                @elseif($project->status == 'Overdue')
-                                    <span class="badge badge-danger">Overdue</span>
-                                @else
-                                    <span class="badge badge-secondary">Planning</span>
-                                @endif
+                                <span class="badge badge-{{ $project->status_badge }}">
+                                    {{ $project->status }}
+                                </span>
                             </td>
                             <td>
                                 @if($project->reference_link)
@@ -189,7 +260,7 @@
         </div>
     </div>
 
-    <!-- Riwayat Proyek Selesai (Completed Projects) -->
+    {{-- Riwayat Proyek Selesai --}}
     <div class="card shadow mb-4 border-left-success">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-success"><i class="fas fa-check-circle mr-1"></i> Riwayat Proyek Selesai (Completed)</h6>
@@ -204,7 +275,7 @@
                             <th>Orang Terlibat</th>
                             <th>Mulai</th>
                             <th>Deadline</th>
-                            <th>Status</th>
+                            <th>Selesai</th>
                             <th>Progress</th>
                             <th>Aksi</th>
                         </tr>
@@ -219,10 +290,17 @@
                                     <span class="badge badge-info">{{ $usr->name }}</span>
                                 @endforeach
                             </td>
-                            <td>{{ $compProject->start_date }}</td>
-                            <td>{{ $compProject->deadline }}</td>
+                            <td>{{ $compProject->start_date?->format('d M Y') ?? '-' }}</td>
+                            <td>{{ $compProject->deadline?->format('d M Y') ?? '-' }}</td>
                             <td>
-                                <span class="badge badge-success">Completed</span>
+                                @if($compProject->completed_at)
+                                    <span class="badge badge-success">
+                                        <i class="fas fa-calendar-check mr-1"></i>
+                                        {{ $compProject->completed_at->format('d M Y') }}
+                                    </span>
+                                @else
+                                    <span class="badge badge-success">Completed</span>
+                                @endif
                             </td>
                             <td>
                                 <div class="progress" style="height: 22px;">

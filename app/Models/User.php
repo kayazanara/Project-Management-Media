@@ -17,6 +17,7 @@ class User extends Authenticatable
         'password',
         'role',
         'division',
+        'division_role',
         'status',
         'avatar',
         'phone',
@@ -44,6 +45,10 @@ class User extends Authenticatable
         ];
     }
 
+    // ============================================================
+    // RELATIONS
+    // ============================================================
+
     public function tasks()
     {
         return $this->hasMany(ProjectTask::class, 'assigned_to');
@@ -63,6 +68,25 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Project::class, 'project_user');
     }
+
+    public function projectRevisions()
+    {
+        return $this->hasMany(ProjectRevision::class);
+    }
+
+    public function meetings()
+    {
+        return $this->hasMany(Meeting::class, 'created_by');
+    }
+
+    public function workdeskAlerts()
+    {
+        return $this->hasMany(WorkdeskAlert::class);
+    }
+
+    // ============================================================
+    // ACCESSORS
+    // ============================================================
 
     public function getWhatsappChatIdAttribute(): ?string
     {
@@ -102,6 +126,64 @@ class User extends Authenticatable
 
         return $themes[$this->theme_color] ?? $themes['blue-purple'];
     }
+
+    // ============================================================
+    // HELPERS: DIVISION ROLE
+    // ============================================================
+
+    public function isPembina(): bool
+    {
+        return $this->division_role === 'pembina';
+    }
+
+    public function isKetuaMedia(): bool
+    {
+        return $this->division_role === 'ketua_media';
+    }
+
+    public function isKepalaDivisi(): bool
+    {
+        return $this->division_role === 'kepala_divisi';
+    }
+
+    public function isAnggota(): bool
+    {
+        return $this->division_role === 'anggota';
+    }
+
+    public function isManager(): bool
+    {
+        return in_array($this->division_role, ['pembina', 'ketua_media']);
+    }
+
+    public function isInDivision(string $divisionName): bool
+    {
+        return str_contains(strtolower($this->division ?? ''), strtolower($divisionName));
+    }
+
+    public function isLapangan(): bool
+    {
+        return $this->isInDivision('lapangan');
+    }
+
+    public function isEditing(): bool
+    {
+        return $this->isInDivision('editing');
+    }
+
+    public function isBroadcast(): bool
+    {
+        return $this->isInDivision('broadcast');
+    }
+
+    public function isAiResearch(): bool
+    {
+        return $this->isInDivision('ai') || $this->isInDivision('research');
+    }
+
+    // ============================================================
+    // TRACKING
+    // ============================================================
 
     public function trackDailyLogin(): void
     {

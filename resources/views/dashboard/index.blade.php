@@ -4,7 +4,7 @@
     <!-- Page Heading & Filter Periode -->
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800"><i class="fas fa-tachometer-alt mr-2"></i> {{ $title }}</h1>
-        
+
         <!-- Form Filter Periode -->
         <form action="{{ route('dashboard') }}" method="GET" class="form-inline">
             <div class="input-group input-group-sm mr-2">
@@ -113,7 +113,6 @@
                 </div>
                 <div class="card-body px-3" style="height: 360px; overflow-y: auto;">
 
-                    {{-- ============ CSS RANK ITEM ============ --}}
                     <style>
                         .rank-item {
                             transition: all 0.2s ease;
@@ -161,22 +160,11 @@
                             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
                             z-index: 2;
                         }
-                        .rank-badge-gold {
-                            background: linear-gradient(135deg, #f59f0b 0%, #ffc107 100%);
-                        }
-                        .rank-badge-silver {
-                            background: linear-gradient(135deg, #adb5bd 0%, #ced4da 100%);
-                        }
-                        .rank-badge-bronze {
-                            background: linear-gradient(135deg, #d9480f 0%, #f76707 100%);
-                        }
-                        .rank-badge-normal {
-                            background: #6c757d;
-                        }
+                        .rank-badge-gold { background: linear-gradient(135deg, #f59f0b 0%, #ffc107 100%); }
+                        .rank-badge-silver { background: linear-gradient(135deg, #adb5bd 0%, #ced4da 100%); }
+                        .rank-badge-bronze { background: linear-gradient(135deg, #d9480f 0%, #f76707 100%); }
+                        .rank-badge-normal { background: #6c757d; }
 
-                        /* ========================================= */
-                        /* PROFILE POPUP (Fixed, via JS)              */
-                        /* ========================================= */
                         #profilePopup {
                             position: fixed;
                             width: 280px;
@@ -197,52 +185,24 @@
                             transform: translateY(0);
                             pointer-events: auto;
                         }
-                        #profilePopup::after {
-                            content: '';
-                            position: absolute;
-                            right: -8px;
-                            top: 50%;
-                            transform: translateY(-50%);
-                            width: 0;
-                            height: 0;
-                            border-top: 8px solid transparent;
-                            border-bottom: 8px solid transparent;
-                            border-left: 8px solid #fff;
-                        }
                     </style>
-                    {{-- ============ END CSS ============ --}}
 
                     <div class="list-group list-group-flush">
                         @forelse($topMembers as $index => $member)
                             @php
                                 $rank = $index + 1;
-
                                 if ($index === 0) {
-                                    $rankClass = 'rank-gold';
-                                    $badgeClass = 'rank-badge-gold';
-                                    $rankIcon = 'fa-crown';
+                                    $rankClass = 'rank-gold'; $badgeClass = 'rank-badge-gold'; $rankIcon = 'fa-crown';
                                 } elseif ($index === 1) {
-                                    $rankClass = 'rank-silver';
-                                    $badgeClass = 'rank-badge-silver';
-                                    $rankIcon = 'fa-medal';
+                                    $rankClass = 'rank-silver'; $badgeClass = 'rank-badge-silver'; $rankIcon = 'fa-medal';
                                 } elseif ($index === 2) {
-                                    $rankClass = 'rank-bronze';
-                                    $badgeClass = 'rank-badge-bronze';
-                                    $rankIcon = 'fa-medal';
+                                    $rankClass = 'rank-bronze'; $badgeClass = 'rank-badge-bronze'; $rankIcon = 'fa-medal';
                                 } else {
-                                    $rankClass = 'rank-default';
-                                    $badgeClass = 'rank-badge-normal';
-                                    $rankIcon = null;
+                                    $rankClass = 'rank-default'; $badgeClass = 'rank-badge-normal'; $rankIcon = null;
                                 }
 
-                                $memberAvatarUrl = $member->avatar
-                                    ? asset('storage/avatars/' . $member->avatar)
-                                    : null;
-
-                                $memberBgUrl = $member->background_image
-                                    ? asset('storage/backgrounds/' . $member->background_image)
-                                    : null;
-
+                                $memberAvatarUrl = $member->avatar ? asset('storage/avatars/' . $member->avatar) : null;
+                                $memberBgUrl = $member->background_image ? asset('storage/backgrounds/' . $member->background_image) : null;
                                 $completedProjectsCount = $member->projects()->where('status', 'Completed')->count();
                             @endphp
 
@@ -255,7 +215,8 @@
                                  data-avatar="{{ $memberAvatarUrl }}"
                                  data-bg="{{ $memberBgUrl }}"
                                  data-gradient="{{ $member->theme_gradient }}"
-                                 data-task-count="{{ $member->contributed_tasks_count }}"
+                                 data-points="{{ $member->points }}"
+                                 data-task-count="{{ $member->task_points_count }}"
                                  data-project-count="{{ $completedProjectsCount }}"
                                  data-login-days="{{ $member->total_login_days ?? 0 }}"
                                  data-initials="{{ strtoupper(substr($member->name, 0, 2)) }}"
@@ -264,8 +225,7 @@
                                 <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
                                     <div class="position-relative mr-3">
                                         @if($memberAvatarUrl)
-                                            <img src="{{ $memberAvatarUrl }}"
-                                                 alt="{{ $member->name }}"
+                                            <img src="{{ $memberAvatarUrl }}" alt="{{ $member->name }}"
                                                  class="rounded-circle shadow-sm"
                                                  style="width: 46px; height: 46px; object-fit: cover; border: 2px solid #fff;">
                                         @else
@@ -295,16 +255,15 @@
                                     </div>
                                 </div>
 
-                                @if($member->contributed_tasks_count > 0)
+                                @if($member->points > 0)
                                     <span class="badge badge-success badge-pill px-3 py-2 ml-2"
                                           style="font-size: 12px; white-space: nowrap;"
-                                          title="{{ $member->contributed_tasks_count }} task diselesaikan sebagai kontributor">
-                                        <i class="fas fa-check-circle mr-1"></i>{{ $member->contributed_tasks_count }}
+                                          title="Total {{ $member->points }} poin dari {{ $member->task_points_count }} task">
+                                        <i class="fas fa-star mr-1"></i>{{ $member->points }}
                                     </span>
                                 @else
                                     <span class="badge badge-light border text-muted badge-pill px-3 py-2 ml-2"
-                                          style="font-size: 12px; white-space: nowrap;"
-                                          title="Belum ada task selesai">
+                                          style="font-size: 12px; white-space: nowrap;">
                                         0
                                     </span>
                                 @endif
@@ -312,7 +271,7 @@
                         @empty
                             <div class="text-center py-5">
                                 <i class="fas fa-users fa-3x text-gray-300 mb-3"></i>
-                                <p class="text-muted mb-0">Belum ada anggota terdaftar.</p>
+                                <p class="text-muted mb-0">Belum ada anggota dengan poin di periode ini.</p>
                             </div>
                         @endforelse
                     </div>
@@ -367,21 +326,13 @@
                                 <span class="font-weight-bold text-gray-800">
                                     <a href="{{ route('projects.show', $proj->id) }}">{{ $proj->name }}</a>
                                 </span>
-                                @if($proj->status == 'On Progress')
-                                    <span class="badge badge-warning">On Progress</span>
-                                @elseif($proj->status == 'Review')
-                                    <span class="badge badge-info">Review</span>
-                                @elseif($proj->status == 'Revision')
-                                    <span class="badge badge-primary">Revision</span>
-                                @elseif($proj->status == 'Overdue')
+                                @if($proj->is_overdue)
                                     <span class="badge badge-danger">Overdue</span>
-                                @elseif($proj->status == 'Planning')
-                                    <span class="badge badge-secondary">Planning</span>
                                 @else
-                                    <span class="badge badge-secondary">{{ $proj->status }}</span>
+                                    <span class="badge badge-{{ $proj->status_badge }}">{{ $proj->status }}</span>
                                 @endif
                             </div>
-                            <small class="text-muted">Deadline: {{ $proj->deadline }}</small>
+                            <small class="text-muted">Deadline: {{ $proj->deadline ? $proj->deadline->format('d M Y') : '-' }}</small>
                         </div>
                     @empty
                         <p class="text-muted text-center mb-0 mt-5">Tidak ada project aktif saat ini.</p>
@@ -467,9 +418,7 @@
         </div>
     </div>
 
-    {{-- ===================================================== --}}
-    {{-- PROFILE POPUP (Fixed, akan diisi via JS) --}}
-    {{-- ===================================================== --}}
+    {{-- PROFILE POPUP --}}
     <div id="profilePopup">
         <div id="popupBg" style="height: 60px; position: relative; overflow: hidden; border-radius: 14px 14px 0 0;"></div>
         <div style="margin-top: -32px; text-align: center; position: relative; z-index: 2;">
@@ -482,15 +431,15 @@
 
             <div style="border-top: 1px solid #eee; margin-top: 10px; padding-top: 10px; display: flex; justify-content: space-around;">
                 <div style="flex: 1;">
+                    <div id="popupPoints" style="font-weight: 700; font-size: 14px; color: #f59f0b;">0</div>
+                    <div style="font-size: 10px; color: #8492a6; margin-top: 2px;">Poin</div>
+                </div>
+                <div style="flex: 1; border-left: 1px solid #eee; border-right: 1px solid #eee;">
                     <div id="popupTasks" style="font-weight: 700; font-size: 14px; color: #4e73df;">0</div>
                     <div style="font-size: 10px; color: #8492a6; margin-top: 2px;">Task</div>
                 </div>
-                <div style="flex: 1; border-left: 1px solid #eee; border-right: 1px solid #eee;">
-                    <div id="popupProjects" style="font-weight: 700; font-size: 14px; color: #1cc88a;">0</div>
-                    <div style="font-size: 10px; color: #8492a6; margin-top: 2px;">Project</div>
-                </div>
                 <div style="flex: 1;">
-                    <div id="popupLogins" style="font-weight: 700; font-size: 14px; color: #f59f0b;">0</div>
+                    <div id="popupLogins" style="font-weight: 700; font-size: 14px; color: #1cc88a;">0</div>
                     <div style="font-size: 10px; color: #8492a6; margin-top: 2px;">Login</div>
                 </div>
             </div>
@@ -503,12 +452,8 @@
         </div>
     </div>
 
-    <!-- Script Chart.js -->
     <script src="{{ asset('sb-admin-2/vendor/chart.js/Chart.min.js') }}"></script>
     <script>
-        // ==========================================
-        // PROFILE POPUP SCRIPT
-        // ==========================================
         (function() {
             const popup = document.getElementById('profilePopup');
             const popupBg = document.getElementById('popupBg');
@@ -516,8 +461,8 @@
             const popupName = document.getElementById('popupName');
             const popupJabatan = document.getElementById('popupJabatan');
             const popupDivision = document.getElementById('popupDivision');
+            const popupPoints = document.getElementById('popupPoints');
             const popupTasks = document.getElementById('popupTasks');
-            const popupProjects = document.getElementById('popupProjects');
             const popupLogins = document.getElementById('popupLogins');
 
             let hoverTimeout = null;
@@ -528,7 +473,6 @@
                     const rect = this.getBoundingClientRect();
                     const data = this.dataset;
 
-                    // Background
                     if (data.bg) {
                         popupBg.style.background = '#eee';
                         popupBg.innerHTML = '<img src="' + data.bg + '" style="width: 100%; height: 100%; object-fit: cover;">';
@@ -537,14 +481,12 @@
                         popupBg.innerHTML = '';
                     }
 
-                    // Avatar
                     if (data.avatar) {
                         popupAvatarWrap.innerHTML = '<img src="' + data.avatar + '" alt="" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">';
                     } else {
                         popupAvatarWrap.innerHTML = '<div style="width: 64px; height: 64px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #fff; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.15); background: ' + data.gradient + ';">' + data.initials + '</div>';
                     }
 
-                    // Info
                     popupName.textContent = data.name;
                     popupDivision.textContent = data.division;
 
@@ -555,12 +497,10 @@
                         popupJabatan.style.display = 'none';
                     }
 
-                    // Stats
+                    popupPoints.textContent = data.points;
                     popupTasks.textContent = data.taskCount;
-                    popupProjects.textContent = data.projectCount;
                     popupLogins.textContent = data.loginDays;
 
-                    // Position
                     const popupWidth = 280;
                     const popupHeight = 280;
                     const gap = 15;
@@ -568,18 +508,8 @@
                     let left = rect.left - popupWidth - gap;
                     let top = rect.top + (rect.height / 2) - (popupHeight / 2);
 
-                    // Kalau popup keluar layar kiri → tampilkan di kanan
-                    if (left < 10) {
-                        left = rect.right + gap;
-                        popup.style.setProperty('--arrow-side', 'left');
-                    } else {
-                        popup.style.setProperty('--arrow-side', 'right');
-                    }
-
-                    // Kalau popup keluar layar atas
+                    if (left < 10) { left = rect.right + gap; }
                     if (top < 10) top = 10;
-
-                    // Kalau popup keluar layar bawah
                     if (top + popupHeight > window.innerHeight - 10) {
                         top = window.innerHeight - popupHeight - 10;
                     }
@@ -598,15 +528,11 @@
                 });
             });
 
-            // Hide popup saat scroll
             window.addEventListener('scroll', function() {
                 popup.classList.remove('show');
             }, true);
         })();
 
-        // ==========================================
-        // CHART
-        // ==========================================
         var ctx = document.getElementById("productivityChart");
         var productivityChart = new Chart(ctx, {
             type: 'line',

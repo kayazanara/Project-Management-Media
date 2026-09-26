@@ -27,7 +27,7 @@
             <form action="{{ route('team.update', $user->id) }}" method="POST">
                 @csrf
                 @method('PUT')
-                
+
                 <div class="form-group">
                     <label><strong>Nama Lengkap</strong> <span class="text-danger">*</span></label>
                     <input type="text" name="name" class="form-control @error('name') is-invalid @enderror" required value="{{ old('name', $user->name) }}">
@@ -45,19 +45,6 @@
                 </div>
 
                 <div class="form-group">
-                    <label><strong>Nomor WhatsApp</strong> <small class="text-muted">(opsional)</small></label>
-                    <input type="text" name="phone" class="form-control @error('phone') is-invalid @enderror"
-                        placeholder="Contoh: 08123456789 atau 628123456789"
-                        value="{{ old('phone', $user->phone) }}">
-                    @error('phone')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                    <small class="form-text text-muted">
-                        <i class="fas fa-info-circle"></i> Format bebas — akan otomatis dinormalisasi ke format <code>628xxx</code>.
-                    </small>
-                </div>
-
-                <div class="form-group">
                     <label><strong>Password</strong> <small class="text-muted">(Kosongkan jika tidak ingin mengubah password)</small></label>
                     <input type="password" name="password" class="form-control @error('password') is-invalid @enderror">
                     @error('password')
@@ -66,7 +53,17 @@
                 </div>
 
                 <div class="form-group">
-                    <label><strong>Role / Peran</strong> <span class="text-danger">*</span></label>
+                    <label><strong>Nomor WhatsApp</strong> <small class="text-muted">(opsional)</small></label>
+                    <input type="text" name="phone" class="form-control @error('phone') is-invalid @enderror"
+                           placeholder="Contoh: 08123456789"
+                           value="{{ old('phone', $user->phone) }}">
+                    @error('phone')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div class="form-group">
+                    <label><strong>Role / Jenis User</strong> <span class="text-danger">*</span></label>
                     <select name="role" class="form-control @error('role') is-invalid @enderror" required>
                         <option value="Ustadz" {{ old('role', $user->role) == 'Ustadz' ? 'selected' : '' }}>Ustadz</option>
                         <option value="Santri" {{ old('role', $user->role) == 'Santri' ? 'selected' : '' }}>Santri</option>
@@ -79,14 +76,23 @@
                 <div class="form-group">
                     <label><strong>Divisi / Posisi</strong> <span class="text-danger">*</span></label>
                     <select name="division" class="form-control @error('division') is-invalid @enderror" required>
-                        <option value="Pembina Media" {{ old('division', $user->division) == 'Pembina Media' ? 'selected' : '' }}>Pembina Media</option>
-                        <option value="Ketua Media" {{ old('division', $user->division) == 'Ketua Media' ? 'selected' : '' }}>Ketua Media</option>
-                        <option value="Lapangan" {{ old('division', $user->division) == 'Lapangan' ? 'selected' : '' }}>Lapangan</option>
-                        <option value="Editing" {{ old('division', $user->division) == 'Editing' ? 'selected' : '' }}>Editing</option>
-                        <option value="Broadcast" {{ old('division', $user->division) == 'Broadcast' ? 'selected' : '' }}>Broadcast</option>
-                        <option value="AI Research" {{ old('division', $user->division) == 'AI Research' ? 'selected' : '' }}>AI Research</option>
+                        @foreach($divisions as $div)
+                            <option value="{{ $div }}" {{ old('division', $user->division) == $div ? 'selected' : '' }}>{{ $div }}</option>
+                        @endforeach
                     </select>
                     @error('division')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div class="form-group">
+                    <label><strong>Peran Struktural</strong> <span class="text-danger">*</span></label>
+                    <select name="division_role" class="form-control @error('division_role') is-invalid @enderror" required>
+                        @foreach($divisionRoles as $key => $label)
+                            <option value="{{ $key }}" {{ old('division_role', $user->division_role) == $key ? 'selected' : '' }}>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    @error('division_role')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>

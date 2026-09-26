@@ -6,51 +6,76 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Helpers\PhoneHelper;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class TeamController extends Controller
 {
     public function index()
     {
-        $users = User::all();
-        
-        $data = [
-            'title' => 'Team Management',
-            'users' => $users
+        $users = User::orderBy('division_role')->orderBy('name')->get();
+
+        // Statistik per division role
+        $stats = [
+            'total'         => $users->count(),
+            'pembina'       => $users->where('division_role', 'pembina')->count(),
+            'ketua_media'   => $users->where('division_role', 'ketua_media')->count(),
+            'kepala_divisi' => $users->where('division_role', 'kepala_divisi')->count(),
+            'anggota'       => $users->where('division_role', 'anggota')->count(),
         ];
 
-        return view('team.index', $data);
+        return view('team.index', [
+            'title' => 'Team Management',
+            'users' => $users,
+            'stats' => $stats,
+        ]);
     }
 
     public function create()
     {
-        $data = [
-            'title' => 'Tambah Anggota Tim'
-        ];
-        return view('team.create', $data);
+        return view('team.create', [
+            'title' => 'Tambah Anggota Tim',
+            'divisions' => $this->availableDivisions(),
+            'divisionRoles' => $this->availableDivisionRoles(),
+        ]);
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6',
-            'role' => 'required|in:Ustadz,Santri',
-            'division' => 'nullable|string',
-            'status' => 'required|in:Aktif,Non-Aktif',
-            'phone' => 'nullable|string|max:20',
+            'name'          => 'required|string|max:255',
+            'email'         => 'required|email|unique:users,email',
+            'password'      => 'required|min:6',
+            'role'          => 'required|in:Ustadz,Santri',
+            'division'      => 'nullable|string',
+            'division_role' => 'required|in:pembina,ketua_media,kepala_divisi,anggota',
+            'status'        => 'required|in:Aktif,Non-Aktif',
+            'phone'         => 'nullable|string|max:20',
         ], [
             'phone.max' => 'Nomor WhatsApp terlalu panjang (maks 20 karakter).',
         ]);
 
+        // Validasi: hanya 1 kepala divisi per divisi
+        if ($request->division_role === 'kepala_divisi' && $request->division) {
+            $existing = User::where('division', $request->division)
+                ->where('division_role', 'kepala_divisi')
+                ->exists();
+
+            if ($existing) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['division_role' => "Divisi {$request->division} sudah punya Kepala Divisi. Hanya boleh 1."]);
+            }
+        }
+
         User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => $request->role,
-            'division' => $request->division,
-            'status' => $request->status,
-            'phone' => PhoneHelper::normalize($request->phone),
+            'name'          => $request->name,
+            'email'         => $request->email,
+            'password'      => Hash::make($request->password),
+            'role'          => $request->role,
+            'division'      => $request->division,
+            'division_role' => $request->division_role,
+            'status'        => $request->status,
+            'phone'         => PhoneHelper::normalize($request->phone),
         ]);
 
         return redirect()->route('team.index')->with('success', 'Anggota tim berhasil ditambahkan!');
@@ -59,11 +84,13 @@ class TeamController extends Controller
     public function edit($id)
     {
         $user = User::findOrFail($id);
-        $data = [
+
+        return view('team.edit', [
             'title' => 'Edit Anggota Tim',
-            'user' => $user
-        ];
-        return view('team.edit', $data);
+            'user' => $user,
+            'divisions' => $this->availableDivisions(),
+            'divisionRoles' => $this->availableDivisionRoles(),
+        ]);
     }
 
     public function update(Request $request, $id)
@@ -71,13 +98,28 @@ class TeamController extends Controller
         $user = User::findOrFail($id);
 
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $id,
-            'role' => 'required|in:Ustadz,Santri',
-            'division' => 'nullable|string',
-            'status' => 'required|in:Aktif,Non-Aktif',
-            'phone' => 'nullable|string|max:20',
+            'name'          => 'required|string|max:255',
+            'email'         => 'required|email|unique:users,email,' . $id,
+            'role'          => 'required|in:Ustadz,Santri',
+            'division'      => 'nullable|string',
+            'division_role' => 'required|in:pembina,ketua_media,kepala_divisi,anggota',
+            'status'        => 'required|in:Aktif,Non-Aktif',
+            'phone'         => 'nullable|string|max:20',
         ]);
+
+        // Validasi: hanya 1 kepala divisi per divisi
+        if ($request->division_role === 'kepala_divisi' && $request->division) {
+            $existing = User::where('division', $request->division)
+                ->where('division_role', 'kepala_divisi')
+                ->where('id', '!=', $id)
+                ->exists();
+
+            if ($existing) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['division_role' => "Divisi {$request->division} sudah punya Kepala Divisi lain."]);
+            }
+        }
 
         $user->name = $request->name;
         $user->email = $request->email;
@@ -86,6 +128,7 @@ class TeamController extends Controller
         }
         $user->role = $request->role;
         $user->division = $request->division;
+        $user->division_role = $request->division_role;
         $user->status = $request->status;
         $user->phone = PhoneHelper::normalize($request->phone);
         $user->save();
@@ -99,5 +142,31 @@ class TeamController extends Controller
         $user->delete();
 
         return redirect()->route('team.index')->with('success', 'Anggota tim berhasil dihapus!');
+    }
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+
+    protected function availableDivisions(): array
+    {
+        return [
+            'Pembina Media',
+            'Ketua Media',
+            'Lapangan',
+            'Editing',
+            'Broadcast',
+            'AI Research',
+        ];
+    }
+
+    protected function availableDivisionRoles(): array
+    {
+        return [
+            'pembina'       => 'Pembina Media',
+            'ketua_media'   => 'Ketua Media',
+            'kepala_divisi' => 'Kepala Divisi',
+            'anggota'       => 'Anggota',
+        ];
     }
 }

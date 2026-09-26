@@ -1,7 +1,6 @@
 @extends('layouts.app')
 
 @section('content')
-    <!-- Page Heading -->
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800"><i class="fas fa-users mr-2"></i> {{ $title }}</h1>
         <a href="{{ route('team.create') }}" class="btn btn-primary btn-sm shadow-sm">
@@ -9,7 +8,6 @@
         </a>
     </div>
 
-    <!-- Notifikasi Sukses -->
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
             {{ session('success') }}
@@ -19,7 +17,69 @@
         </div>
     @endif
 
-    <!-- DataTales Example -->
+    <!-- Statistik Role -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Anggota</div>
+                            <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $stats['total'] }} Orang</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-users fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Manager</div>
+                            <div class="h6 mb-0 font-weight-bold text-gray-800">
+                                <i class="fas fa-shield-alt"></i> {{ $stats['pembina'] }} Pembina<br>
+                                <i class="fas fa-crown"></i> {{ $stats['ketua_media'] }} Ketua Media
+                            </div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-user-tie fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Kepala Divisi</div>
+                            <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $stats['kepala_divisi'] }} Orang</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-user-cog fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Anggota</div>
+                            <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $stats['anggota'] }} Orang</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-user fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabel Anggota -->
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">Daftar Anggota Tim Media</h6>
@@ -33,8 +93,9 @@
                             <th>Nama</th>
                             <th>Email</th>
                             <th>No. WhatsApp</th>
-                            <th>Role / Peran</th>
+                            <th>Role</th>
                             <th>Divisi</th>
+                            <th>Peran Struktural</th>
                             <th>Status</th>
                             <th>Aksi</th>
                         </tr>
@@ -63,7 +124,34 @@
                             </td>
                             <td>{{ $user->division ?? '-' }}</td>
                             <td>
-                                <span class="badge badge-success">{{ $user->status }}</span>
+                                @switch($user->division_role)
+                                    @case('pembina')
+                                        <span class="badge badge-danger">
+                                            <i class="fas fa-shield-alt mr-1"></i>Pembina Media
+                                        </span>
+                                        @break
+                                    @case('ketua_media')
+                                        <span class="badge badge-warning">
+                                            <i class="fas fa-crown mr-1"></i>Ketua Media
+                                        </span>
+                                        @break
+                                    @case('kepala_divisi')
+                                        <span class="badge badge-info">
+                                            <i class="fas fa-user-cog mr-1"></i>Kepala Divisi
+                                        </span>
+                                        @break
+                                    @default
+                                        <span class="badge badge-secondary">
+                                            <i class="fas fa-user mr-1"></i>Anggota
+                                        </span>
+                                @endswitch
+                            </td>
+                            <td>
+                                @if($user->status == 'Aktif')
+                                    <span class="badge badge-success">Aktif</span>
+                                @else
+                                    <span class="badge badge-secondary">Non-Aktif</span>
+                                @endif
                             </td>
                             <td>
                                 <a href="{{ route('team.edit', $user->id) }}" class="btn btn-warning btn-sm" title="Edit">

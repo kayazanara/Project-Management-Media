@@ -1,0 +1,720 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\Project;
+use App\Models\ProjectTask;
+use App\Models\ProjectRevision;
+use App\Models\User;
+use App\Models\Content;
+use App\Models\Meeting;
+use App\Models\WorkdeskAlert;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+
+class WorkdeskController extends Controller
+{
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+
+        if (!$user->isManager()) {
+            abort(403, 'Workdesk hanya untuk Pembina & Ketua Media.');
+        }
+
+        $days = (int) $request->input('days', 30);
+        if (!in_array($days, [7, 30, 90])) {
+            $days = 30;
+        }
+
+        $data = [
+            'title' => 'Workdesk',
+            'user' => $user,
+            'stats' => $this->buildOverviewStats(),
+            'actions' => $this->buildActionsForUser($user),
+            'alerts' => $this->buildAlerts(),
+            'performance' => $this->buildDivisionPerformance(),
+            'dailyTrend' => $this->buildDailyCompletionTrend($days),
+            'filterDays' => $days,
+            'topMembers' => $this->buildTopMembers(),
+            'bottomMembers' => $this->buildBottomMembers(),
+            'projectHealth' => $this->buildProjectHealth(),
+            'upcomingMeetings' => $this->buildUpcomingMeetings(),
+            'lastMeeting' => $this->buildLastMeeting(),
+            'systemHealth' => $user->isPembina() ? $this->buildSystemHealth() : null,
+        ];
+
+        return view('workdesk.index', $data);
+    }
+
+    public function getActions()
+    {
+        $user = Auth::user();
+        if (!$user->isManager()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        return response()->json([
+            'actions' => $this->buildActionsForUser($user),
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+    }
+
+    public function getAlerts()
+    {
+        $user = Auth::user();
+        if (!$user->isManager()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        return response()->json([
+            'alerts' => $this->buildAlerts(),
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+    }
+
+    public function getPerformance()
+    {
+        $user = Auth::user();
+        if (!$user->isManager()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        return response()->json([
+            'performance' => $this->buildDivisionPerformance(),
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+    }
+
+    public function markRead($id)
+    {
+        $alert = WorkdeskAlert::findOrFail($id);
+
+        if ($alert->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        $alert->update(['is_read' => true]);
+
+        return response()->json(['success' => true]);
+    }
+
+    // ============================================================
+    // HELPER: POIN
+    // ============================================================
+
+    /**
+     * Hitung poin per user dalam rentang waktu.
+     * Return: [user_id => ['points' => float, 'tasks' => int]]
+     */
+    private function calculatePointsInRange(Carbon $start, Carbon $end): array
+    {
+        $tasks = ProjectTask::where(function ($q) use ($start, $end) {
+                $q->whereBetween('task_date', [$start, $end])
+                  ->orWhere(function ($q2) use ($start, $end) {
+                      $q2->whereNull('task_date')
+                         ->whereBetween('created_at', [$start, $end]);
+                  });
+            })
+            ->with(['contributors:id', 'assignedUser:id'])
+            ->get();
+
+        $result = [];
+
+        foreach ($tasks as $task) {
+            $weight = (float) $task->weight;
+            if ($weight <= 0) continue;
+
+            $contributorIds = $task->contributors->pluck('id')->toArray();
+            if (empty($contributorIds) && $task->assigned_to) {
+                $contributorIds = [(int) $task->assigned_to];
+            }
+            if (empty($contributorIds)) continue;
+
+            $pointPerPerson = $weight / count($contributorIds);
+
+            foreach ($contributorIds as $uid) {
+                if (!isset($result[$uid])) {
+                    $result[$uid] = ['points' => 0, 'tasks' => 0];
+                }
+                $result[$uid]['points'] += $pointPerPerson;
+                $result[$uid]['tasks'] += 1;
+            }
+        }
+
+        return $result;
+    }
+
+    // ============================================================
+    // COLOR MAPPING
+    // ============================================================
+
+    private function getDivisionColors(): array
+    {
+        return [
+            'Lapangan'    => ['hex' => '#1cc88a', 'label' => 'Tim Lapangan'],
+            'Editing'     => ['hex' => '#224abe', 'label' => 'Tim Editing'],
+            'Broadcast'   => ['hex' => '#8b5cf6', 'label' => 'Tim Broadcast'],
+            'AI Research' => ['hex' => '#f59f0b', 'label' => 'Tim AI Research'],
+        ];
+    }
+
+    // ============================================================
+    // OVERVIEW / ACTIONS / ALERTS
+    // ============================================================
+
+    private function buildOverviewStats(): array
+    {
+        $today = Carbon::today();
+
+        return [
+            'total_projects'     => Project::count(),
+            'active_projects'    => Project::where('status', '!=', Project::STATUS_COMPLETED)->count(),
+            'completed_projects' => Project::where('status', Project::STATUS_COMPLETED)->count(),
+            'overdue_projects'   => Project::where('is_overdue', true)
+                ->where('status', '!=', Project::STATUS_COMPLETED)
+                ->count(),
+            'total_tasks'        => ProjectTask::count(),
+            'completed_tasks'    => ProjectTask::where('status', 'Completed')->count(),
+            'ready_contents'     => Content::where('status', 'Ready')->count(),
+            'total_members'      => User::count(),
+            'active_members'     => User::where('status', 'Aktif')->count(),
+            'tasks_today'        => ProjectTask::whereDate('task_date', $today)->count(),
+        ];
+    }
+
+    private function buildActionsForUser(User $user): array
+    {
+        $actions = [];
+
+        if ($user->isKetuaMedia()) {
+            $planningProjects = Project::where('status', Project::STATUS_PLANNING)
+                ->orderBy('created_at', 'asc')
+                ->take(5)
+                ->get();
+
+            foreach ($planningProjects as $p) {
+                $actions[] = [
+                    'type' => 'submit_task',
+                    'priority' => 'high',
+                    'icon' => 'fa-tasks',
+                    'color' => 'warning',
+                    'title' => 'Susun Task: ' . $p->name,
+                    'subtitle' => 'Project baru menunggu task dari Anda',
+                    'url' => route('projects.show', $p->id),
+                    'cta' => 'Susun Sekarang',
+                ];
+            }
+
+            $reviewProjects = Project::where('status', Project::STATUS_REVIEW)
+                ->whereNull('approved_by_ketua_at')
+                ->take(5)
+                ->get();
+
+            foreach ($reviewProjects as $p) {
+                $actions[] = [
+                    'type' => 'review',
+                    'priority' => 'high',
+                    'icon' => 'fa-search',
+                    'color' => 'info',
+                    'title' => 'Review: ' . $p->name,
+                    'subtitle' => 'Menunggu persetujuan Anda',
+                    'url' => route('projects.show', $p->id),
+                    'cta' => 'Review',
+                ];
+            }
+        }
+
+        if ($user->isPembina()) {
+            $taskReviewProjects = Project::where('status', Project::STATUS_TASK_REVIEW)
+                ->orderBy('created_at', 'asc')
+                ->take(5)
+                ->get();
+
+            foreach ($taskReviewProjects as $p) {
+                $actions[] = [
+                    'type' => 'scoring',
+                    'priority' => 'high',
+                    'icon' => 'fa-star',
+                    'color' => 'primary',
+                    'title' => 'Scoring: ' . $p->name,
+                    'subtitle' => 'Task sudah disusun, perlu bobot & approve',
+                    'url' => route('projects.show', $p->id),
+                    'cta' => 'Scoring',
+                ];
+            }
+
+            $scoringProjects = Project::where('status', Project::STATUS_SCORING)
+                ->take(5)
+                ->get();
+
+            foreach ($scoringProjects as $p) {
+                $actions[] = [
+                    'type' => 'release',
+                    'priority' => 'high',
+                    'icon' => 'fa-rocket',
+                    'color' => 'success',
+                    'title' => 'Rilis: ' . $p->name,
+                    'subtitle' => 'Scoring selesai, siap dirilis',
+                    'url' => route('projects.show', $p->id),
+                    'cta' => 'Rilis',
+                ];
+            }
+
+            $reviewProjects = Project::where('status', Project::STATUS_REVIEW)
+                ->whereNull('approved_by_pembina_at')
+                ->take(5)
+                ->get();
+
+            foreach ($reviewProjects as $p) {
+                $actions[] = [
+                    'type' => 'approve',
+                    'priority' => 'high',
+                    'icon' => 'fa-check-circle',
+                    'color' => 'success',
+                    'title' => 'Approve: ' . $p->name,
+                    'subtitle' => 'Menunggu persetujuan Anda',
+                    'url' => route('projects.show', $p->id),
+                    'cta' => 'Approve',
+                ];
+            }
+
+            $overdueProjects = Project::where('is_overdue', true)
+                ->where('status', '!=', Project::STATUS_COMPLETED)
+                ->take(5)
+                ->get();
+
+            foreach ($overdueProjects as $p) {
+                $actions[] = [
+                    'type' => 'overdue',
+                    'priority' => 'critical',
+                    'icon' => 'fa-exclamation-triangle',
+                    'color' => 'danger',
+                    'title' => 'Overdue: ' . $p->name,
+                    'subtitle' => 'Lewat deadline ' . ($p->deadline ? $p->deadline->diffInDays(now()) : 0) . ' hari',
+                    'url' => route('projects.show', $p->id),
+                    'cta' => 'Lihat',
+                ];
+            }
+        }
+
+        return $actions;
+    }
+
+    private function buildAlerts(): array
+    {
+        $alerts = [];
+
+        $overdueProjects = Project::where('is_overdue', true)
+            ->where('status', '!=', Project::STATUS_COMPLETED)
+            ->orderBy('deadline', 'asc')
+            ->take(5)
+            ->get();
+
+        foreach ($overdueProjects as $p) {
+            $alerts[] = [
+                'priority' => 'critical',
+                'icon' => 'fa-exclamation-triangle',
+                'color' => 'danger',
+                'title' => 'Project OVERDUE: ' . $p->name,
+                'message' => 'Deadline ' . ($p->deadline ? $p->deadline->format('d M') : '-')
+                    . ' (' . ($p->deadline ? $p->deadline->diffInDays(now()) : 0) . ' hari lalu)',
+                'url' => route('projects.show', $p->id),
+                'cta' => 'Lihat',
+            ];
+        }
+
+        $atRiskProjects = Project::where('status', '!=', Project::STATUS_COMPLETED)
+            ->where('is_overdue', false)
+            ->where('deadline', '<=', now()->addDays(3)->toDateString())
+            ->where('deadline', '>=', now()->toDateString())
+            ->withCount([
+                'tasks as total_tasks_count',
+                'tasks as completed_tasks_count' => fn($q) => $q->where('status', 'Completed'),
+            ])
+            ->take(3)
+            ->get();
+
+        foreach ($atRiskProjects as $p) {
+            $progress = $p->total_tasks_count > 0
+                ? round(($p->completed_tasks_count / $p->total_tasks_count) * 100)
+                : 0;
+
+            if ($progress < 50) {
+                $alerts[] = [
+                    'priority' => 'high',
+                    'icon' => 'fa-clock',
+                    'color' => 'warning',
+                    'title' => 'At Risk: ' . $p->name,
+                    'message' => 'Progress ' . $progress . '%, deadline ' . ($p->deadline ? $p->deadline->format('d M') : '-'),
+                    'url' => route('projects.show', $p->id),
+                    'cta' => 'Cek',
+                ];
+            }
+        }
+
+        $inactiveMembers = User::where('status', 'Aktif')
+            ->where(function ($q) {
+                $q->where('last_login_date', '<', now()->subDays(3)->toDateString())
+                  ->orWhereNull('last_login_date');
+            })
+            ->take(3)
+            ->get();
+
+        foreach ($inactiveMembers as $m) {
+            $alerts[] = [
+                'priority' => 'medium',
+                'icon' => 'fa-user-clock',
+                'color' => 'info',
+                'title' => $m->name . ' tidak aktif',
+                'message' => 'Terakhir login: ' . ($m->last_login_date ? $m->last_login_date->format('d M') : 'Belum pernah'),
+                'url' => route('profile.show', $m->id),
+                'cta' => 'Profil',
+            ];
+        }
+
+        return $alerts;
+    }
+
+    // ============================================================
+    // PERFORMANCE (Division)
+    // ============================================================
+
+    private function buildDivisionPerformance(): array
+    {
+        $divisions = $this->getDivisionColors();
+        $result = [];
+
+        $startOfWeek = now()->startOfWeek();
+        $endOfWeek = now()->endOfWeek();
+
+        foreach ($divisions as $divName => $meta) {
+            $memberIds = User::where('division', 'like', "%{$divName}%")->pluck('id');
+
+            if ($memberIds->isEmpty()) {
+                $result[] = [
+                    'name' => $divName,
+                    'label' => $meta['label'],
+                    'hex' => $meta['hex'],
+                    'completion_rate' => 0,
+                    'on_time_rate' => 0,
+                    'performance_score' => 0,
+                    'total_tasks' => 0,
+                    'completed_tasks' => 0,
+                    'completed_projects' => 0,
+                    'trend' => 0,
+                ];
+                continue;
+            }
+
+            $totalTasks = ProjectTask::whereIn('assigned_to', $memberIds)
+                ->whereBetween('task_date', [$startOfWeek, $endOfWeek])
+                ->count();
+
+            $completedTasks = ProjectTask::whereIn('assigned_to', $memberIds)
+                ->where('status', 'Completed')
+                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
+                ->count();
+
+            $onTimeTasks = ProjectTask::whereIn('assigned_to', $memberIds)
+                ->where('status', 'Completed')
+                ->whereNotNull('task_date')
+                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
+                ->whereColumn('completed_at', '<=', 'task_date')
+                ->count();
+
+            $weightedTotal = ProjectTask::whereIn('assigned_to', $memberIds)
+                ->whereBetween('task_date', [$startOfWeek, $endOfWeek])
+                ->sum('weight');
+
+            $weightedDone = ProjectTask::whereIn('assigned_to', $memberIds)
+                ->where('status', 'Completed')
+                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
+                ->sum('weight');
+
+            $completedProjects = Project::whereHas('users', function ($q) use ($memberIds) {
+                $q->whereIn('users.id', $memberIds);
+            })
+                ->where('status', Project::STATUS_COMPLETED)
+                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
+                ->count();
+
+            $completionRate = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100) : 0;
+            $onTimeRate = $completedTasks > 0 ? round(($onTimeTasks / $completedTasks) * 100) : 0;
+            $weightedRate = $weightedTotal > 0 ? round(($weightedDone / $weightedTotal) * 100) : 0;
+
+            $performanceScore = round(
+                ($completionRate * 0.4) + ($onTimeRate * 0.4) + ($weightedRate * 0.2)
+            );
+
+            $prevStart = now()->subWeek()->startOfWeek();
+            $prevEnd = now()->subWeek()->endOfWeek();
+
+            $prevCompleted = ProjectTask::whereIn('assigned_to', $memberIds)
+                ->where('status', 'Completed')
+                ->whereBetween('completed_at', [$prevStart, $prevEnd])
+                ->count();
+
+            $trend = $prevCompleted > 0
+                ? round((($completedTasks - $prevCompleted) / $prevCompleted) * 100)
+                : 0;
+
+            $result[] = [
+                'name' => $divName,
+                'label' => $meta['label'],
+                'hex' => $meta['hex'],
+                'completion_rate' => $completionRate,
+                'on_time_rate' => $onTimeRate,
+                'performance_score' => $performanceScore,
+                'total_tasks' => $totalTasks,
+                'completed_tasks' => $completedTasks,
+                'completed_projects' => $completedProjects,
+                'trend' => $trend,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function buildDailyCompletionTrend(int $days = 30): array
+    {
+        $divisions = $this->getDivisionColors();
+        $end = now();
+        $start = $end->copy()->subDays($days - 1);
+
+        $dates = [];
+        $current = $start->copy();
+        while ($current <= $end) {
+            $dates[] = $current->format('Y-m-d');
+            $current->addDay();
+        }
+
+        $result = [
+            'labels' => array_map(fn($d) => Carbon::parse($d)->format('d M'), $dates),
+            'datasets' => [],
+            'days' => $days,
+        ];
+
+        foreach ($divisions as $divName => $meta) {
+            $memberIds = User::where('division', 'like', "%{$divName}%")->pluck('id');
+
+            if ($memberIds->isEmpty()) {
+                $result['datasets'][] = [
+                    'label' => $meta['label'],
+                    'hex' => $meta['hex'],
+                    'data' => array_fill(0, count($dates), 0),
+                ];
+                continue;
+            }
+
+            $totalTasks = ProjectTask::whereIn('assigned_to', $memberIds)->count();
+
+            $data = [];
+            foreach ($dates as $date) {
+                if ($totalTasks == 0) {
+                    $data[] = 0;
+                    continue;
+                }
+
+                $completed = ProjectTask::whereIn('assigned_to', $memberIds)
+                    ->where('status', 'Completed')
+                    ->whereDate('completed_at', '<=', $date)
+                    ->count();
+
+                $data[] = round(($completed / $totalTasks) * 100, 1);
+            }
+
+            $result['datasets'][] = [
+                'label' => $meta['label'],
+                'hex' => $meta['hex'],
+                'data' => $data,
+            ];
+        }
+
+        return $result;
+    }
+
+    // ============================================================
+    // TOP / BOTTOM MEMBERS — ⚡ PAKAI SISTEM POIN
+    // ============================================================
+
+    private function buildTopMembers(): array
+    {
+        $start = now()->startOfWeek();
+        $end = now()->endOfWeek();
+
+        $pointsData = $this->calculatePointsInRange($start, $end);
+
+        if (empty($pointsData)) {
+            return [];
+        }
+
+        return User::whereIn('id', array_keys($pointsData))
+            ->get()
+            ->map(function ($u) use ($pointsData) {
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'avatar' => $u->avatar,
+                    'division' => $u->division ?? 'Tanpa Divisi',
+                    'points' => round($pointsData[$u->id]['points']),
+                    'tasks_count' => $pointsData[$u->id]['tasks'],
+                ];
+            })
+            ->sortByDesc('points')
+            ->take(5)
+            ->values()
+            ->toArray();
+    }
+
+    private function buildBottomMembers(): array
+    {
+        $start = now()->startOfWeek();
+        $end = now()->endOfWeek();
+
+        $pointsData = $this->calculatePointsInRange($start, $end);
+
+        // Ambil semua user aktif, hitung poin (default 0), filter yang poin < 3
+        return User::where('status', 'Aktif')
+            ->get()
+            ->map(function ($u) use ($pointsData) {
+                $points = isset($pointsData[$u->id]) ? round($pointsData[$u->id]['points']) : 0;
+                $tasks = $pointsData[$u->id]['tasks'] ?? 0;
+
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'avatar' => $u->avatar,
+                    'division' => $u->division ?? 'Tanpa Divisi',
+                    'points' => $points,
+                    'tasks_count' => $tasks,
+                    'last_login' => $u->last_login_date ? $u->last_login_date->format('d M') : 'Belum pernah',
+                ];
+            })
+            ->filter(fn($u) => $u['points'] < 3)
+            ->sortBy('points')
+            ->take(5)
+            ->values()
+            ->toArray();
+    }
+
+    // ============================================================
+    // PROJECT HEALTH
+    // ============================================================
+
+    private function buildProjectHealth(): array
+    {
+        $activeProjects = Project::where('status', '!=', Project::STATUS_COMPLETED)
+            ->withCount([
+                'tasks as total_tasks_count',
+                'tasks as completed_tasks_count' => fn($q) => $q->where('status', 'Completed'),
+            ])
+            ->get();
+
+        $onTrack = [];
+        $atRisk = [];
+        $overdue = [];
+
+        foreach ($activeProjects as $p) {
+            $progress = $p->total_tasks_count > 0
+                ? round(($p->completed_tasks_count / $p->total_tasks_count) * 100)
+                : 0;
+
+            $data = [
+                'id' => $p->id,
+                'name' => $p->name,
+                'progress' => $progress,
+                'deadline' => $p->deadline ? $p->deadline->format('d M Y') : '-',
+                'status' => $p->status,
+                'days_left' => $p->deadline ? now()->diffInDays($p->deadline, false) : null,
+            ];
+
+            if ($p->is_overdue) {
+                $overdue[] = $data;
+            } elseif ($p->deadline && $p->deadline->diffInDays(now(), false) <= 3 && $progress < 50) {
+                $atRisk[] = $data;
+            } else {
+                $onTrack[] = $data;
+            }
+        }
+
+        return [
+            'on_track' => array_slice($onTrack, 0, 5),
+            'at_risk' => array_slice($atRisk, 0, 5),
+            'overdue' => array_slice($overdue, 0, 5),
+            'counts' => [
+                'on_track' => count($onTrack),
+                'at_risk' => count($atRisk),
+                'overdue' => count($overdue),
+            ],
+        ];
+    }
+
+    // ============================================================
+    // MEETINGS
+    // ============================================================
+
+    private function buildUpcomingMeetings(): array
+    {
+        if (!class_exists(Meeting::class)) return [];
+
+        return Meeting::upcoming(7)->take(3)->get()->map(function ($m) {
+            return [
+                'id' => $m->id,
+                'title' => $m->title,
+                'date' => $m->date_formatted,
+                'time' => substr($m->start_time, 0, 5) . ' - ' . substr($m->end_time, 0, 5),
+                'location' => $m->location ?? '-',
+                'attendee_count' => count($m->attendees ?? []),
+            ];
+        })->toArray();
+    }
+
+    private function buildLastMeeting(): ?array
+    {
+        if (!class_exists(Meeting::class)) return null;
+
+        $last = Meeting::published()->orderBy('meeting_date', 'desc')->first();
+        if (!$last) return null;
+
+        return [
+            'id' => $last->id,
+            'title' => $last->title,
+            'date' => $last->date_formatted,
+            'total_decisions' => count($last->decisions ?? []),
+            'total_actions' => $last->total_action_items,
+            'completed_actions' => $last->completed_action_items,
+        ];
+    }
+
+    // ============================================================
+    // SYSTEM HEALTH
+    // ============================================================
+
+    private function buildSystemHealth(): array
+    {
+        $storageFree = @disk_free_space(storage_path());
+        $storageTotal = @disk_total_space(storage_path());
+        $storagePercent = ($storageTotal > 0) ? round((1 - ($storageFree / $storageTotal)) * 100) : 0;
+
+        $queueCount = \DB::table('jobs')->count();
+        $failedJobs = \DB::table('failed_jobs')->count();
+
+        $wahaUrl = config('services.waha.url');
+        $wahaStatus = 'unknown';
+        try {
+            $response = \Http::timeout(3)->get("{$wahaUrl}/api/sessions");
+            $wahaStatus = $response->successful() ? 'connected' : 'error';
+        } catch (\Throwable $e) {
+            $wahaStatus = 'offline';
+        }
+
+        return [
+            'storage_percent' => $storagePercent,
+            'queue_pending' => $queueCount,
+            'queue_failed' => $failedJobs,
+            'waha_status' => $wahaStatus,
+        ];
+    }
+}

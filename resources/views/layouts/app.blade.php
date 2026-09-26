@@ -10,25 +10,83 @@
 
     <title>{{ $title ?? 'Dashboard' }} - Project Media</title>
 
-    <!-- Custom fonts for this template-->
     <link href="{{ asset('sb-admin-2/vendor/fontawesome-free/css/all.min.css') }}" rel="stylesheet" type="text/css">
     <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
-
-    <!-- Custom styles for this template-->
     <link href="{{ asset('sb-admin-2/css/sb-admin-2.min.css') }}" rel="stylesheet">
-    
-    <!-- Cropper.js CSS untuk Fitur Crop Foto -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
 
-    <!-- Custom CSS untuk Sidebar Sticky & Dropdown Profil -->
     <style>
+        /* ===================================================== */
+        /* SIDEBAR — FULL 100vh, TANPA SCROLLBAR, TANPA TERPOTONG */
+        /* ===================================================== */
         #accordionSidebar {
             position: sticky;
             top: 0;
             height: 100vh;
             overflow-y: auto;
+            overflow-x: hidden;
             z-index: 1000;
+
+            /* ⚡ Sembunyikan scrollbar */
+            scrollbar-width: none;         /* Firefox */
+            -ms-overflow-style: none;       /* IE/Edge lama */
         }
+
+        #accordionSidebar::-webkit-scrollbar {
+            display: none;                  /* Chrome/Safari/Edge */
+            width: 0;
+            height: 0;
+        }
+
+        /* ⚡ Compress padding biar semua item muat dalam 100vh */
+        #accordionSidebar .sidebar-brand {
+            height: auto;
+            padding: 12px 1rem;
+        }
+        #accordionSidebar .sidebar-brand-text {
+            font-size: 0.95rem;
+        }
+        #accordionSidebar .sidebar-brand-icon i {
+            font-size: 1.6rem;
+        }
+
+        #accordionSidebar .nav-item .nav-link {
+            padding: 0.55rem 1rem;         /* dari default ~1rem jadi 0.55rem */
+        }
+        #accordionSidebar .nav-item .nav-link span {
+            font-size: 0.82rem;            /* sedikit dikecilkan */
+        }
+        #accordionSidebar .nav-item .nav-link i {
+            font-size: 0.9rem;
+        }
+
+        #accordionSidebar .sidebar-heading {
+            padding: 0 1rem;
+            margin-bottom: 0.35rem;
+            font-size: 0.62rem;
+        }
+
+        #accordionSidebar hr.sidebar-divider {
+            margin: 0.6rem 1rem;           /* dari 1rem jadi 0.6rem */
+        }
+
+        #accordionSidebar .sidebar-divider.my-0 {
+            margin: 0;
+        }
+
+        #accordionSidebar .text-center.d-none.d-md-inline {
+            margin-top: 0.4rem;
+            margin-bottom: 0.4rem;
+        }
+
+        #accordionSidebar #sidebarToggle {
+            width: 2rem;
+            height: 2rem;
+            line-height: 2rem;
+            font-size: 0.75rem;
+        }
+
+        /* Toggle sidebar collapse — item lebih rapi saat collapsed */
         body.sidebar-toggled #accordionSidebar .sidebar-heading,
         body.sidebar-toggled #accordionSidebar span {
             display: none !important;
@@ -36,6 +94,10 @@
         body.sidebar-toggled #accordionSidebar .sidebar-brand-text {
             display: none !important;
         }
+
+        /* ===================================================== */
+        /* PROFIL DROPDOWN */
+        /* ===================================================== */
         .profile-dropdown-card {
             width: 320px !important;
             padding: 20px !important;
@@ -49,7 +111,110 @@
         }
 
         /* ===================================================== */
-        /* WELCOME ANIMATION OVERLAY — Minimalis Premium         */
+        /* TEMA GLOBAL — GRADIENT BIRU-UNGU                      */
+        /* ===================================================== */
+
+        #content {
+            background: linear-gradient(135deg, #eef2ff 0%, #e8e9fc 35%, #ede4fc 65%, #f0e8fd 100%) !important;
+            min-height: 100vh;
+            background-attachment: fixed;
+        }
+
+        .sidebar.bg-gradient-primary {
+            background: linear-gradient(180deg, #4e73df 0%, #5b5dd8 50%, #6f5bcf 100%) !important;
+        }
+
+        .sidebar.bg-gradient-primary .nav-item.active .nav-link {
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 6px;
+            font-weight: 700;
+        }
+
+        h1.h3.text-gray-800 {
+            background: linear-gradient(135deg, #4e73df 0%, #6f5bcf 50%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            color: transparent;
+            display: inline-block;
+        }
+
+        h1.h3.text-gray-800 i {
+            -webkit-text-fill-color: #6f5bcf;
+            color: #6f5bcf;
+            background: none;
+        }
+
+        .card.shadow > .card-header:not([class*="bg-"]) {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 50%, #f5f0fd 100%);
+            border-bottom: 2px solid rgba(139, 92, 246, 0.15);
+        }
+
+        .card.shadow {
+            box-shadow: 0 2px 12px rgba(78, 115, 223, 0.08) !important;
+            border: 1px solid rgba(139, 92, 246, 0.10);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4e73df 0%, #6f5bcf 100%);
+            border-color: transparent;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover,
+        .btn-primary:focus {
+            background: linear-gradient(135deg, #3a5bc7 0%, #5f4bbb 100%);
+            border-color: transparent;
+            box-shadow: 0 4px 12px rgba(78, 115, 223, 0.35);
+        }
+
+        .badge-primary {
+            background: linear-gradient(135deg, #4e73df 0%, #6f5bcf 100%);
+            color: #fff;
+        }
+
+        .progress-bar.bg-success {
+            background: linear-gradient(135deg, #1cc88a 0%, #17a673 100%) !important;
+        }
+
+        a.text-primary {
+            color: #6f5bcf !important;
+        }
+        a.text-primary:hover {
+            color: #4e73df !important;
+        }
+
+        .topbar.bg-white {
+            background: #ffffff !important;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.08);
+        }
+
+        /* ⚡ Scrollbar area konten — ungu tipis, match tema */
+        #content::-webkit-scrollbar,
+        body::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        #content::-webkit-scrollbar-track,
+        body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #content::-webkit-scrollbar-thumb,
+        body::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.35);
+            border-radius: 4px;
+        }
+        #content::-webkit-scrollbar-thumb:hover,
+        body::-webkit-scrollbar-thumb:hover {
+            background: rgba(139, 92, 246, 0.6);
+        }
+        #content,
+        body {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
+        }
+
+        /* ===================================================== */
+        /* WELCOME ANIMATION OVERLAY                             */
         /* ===================================================== */
         .welcome-overlay {
             position: fixed;
@@ -76,7 +241,6 @@
             z-index: 2;
         }
 
-        /* "SELAMAT DATANG" — kecil, letter-spacing lebar */
         .welcome-salam {
             font-size: 14px;
             font-weight: 600;
@@ -88,7 +252,6 @@
             animation: welcomeSlideUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
         }
 
-        /* NAMA SANTRI — besar, tebal, capslock */
         .welcome-name {
             font-size: 44px;
             font-weight: 800;
@@ -100,19 +263,11 @@
             animation: welcomeSlideUp 1s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards;
         }
 
-        /* Slide up + fade */
         @keyframes welcomeSlideUp {
-            from {
-                opacity: 0;
-                transform: translateY(40px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(40px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* Garis dekoratif di bawah nama */
         .welcome-line {
             width: 0;
             height: 2px;
@@ -126,7 +281,6 @@
             to { width: 60px; }
         }
 
-        /* Subtext kecil */
         .welcome-sub {
             font-size: 12.5px;
             font-weight: 400;
@@ -137,20 +291,19 @@
             animation: welcomeSlideUp 0.7s ease-out 1.2s forwards;
         }
 
-        /* Responsive */
         @media (max-width: 480px) {
             .welcome-name { font-size: 30px; letter-spacing: 1px; }
             .welcome-salam { font-size: 12px; letter-spacing: 5px; margin-bottom: 14px; }
             .welcome-sub { font-size: 11.5px; }
         }
     </style>
+
+    @stack('styles')
 </head>
 
 <body id="page-top">
 
-    {{-- ===================================================== --}}
-    {{-- WELCOME ANIMATION OVERLAY (Minimalis + Sound) --}}
-    {{-- ===================================================== --}}
+    {{-- WELCOME ANIMATION OVERLAY --}}
     @if(session('show_welcome'))
         <div id="welcomeOverlay" class="welcome-overlay">
             <div class="welcome-content">
@@ -162,11 +315,6 @@
         </div>
 
         <script>
-            // ==========================================
-            // PREMIUM WELCOME CHIME (Web Audio API)
-            // Menghasilkan suara "ding~" naik (C-E-G chord)
-            // tanpa perlu file MP3/audio
-            // ==========================================
             function playWelcomeSound() {
                 try {
                     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -175,7 +323,6 @@
                     const ctx = new AudioContextClass();
                     const now = ctx.currentTime;
 
-                    // Tone 1: C5 (523.25 Hz)
                     const osc1 = ctx.createOscillator();
                     const gain1 = ctx.createGain();
                     osc1.type = 'sine';
@@ -187,7 +334,6 @@
                     osc1.start(now);
                     osc1.stop(now + 1);
 
-                    // Tone 2: E5 (659.25 Hz) — delay 150ms
                     const osc2 = ctx.createOscillator();
                     const gain2 = ctx.createGain();
                     osc2.type = 'sine';
@@ -199,7 +345,6 @@
                     osc2.start(now + 0.15);
                     osc2.stop(now + 1.2);
 
-                    // Tone 3: G5 (783.99 Hz) — delay 300ms, softest
                     const osc3 = ctx.createOscillator();
                     const gain3 = ctx.createGain();
                     osc3.type = 'sine';
@@ -211,15 +356,12 @@
                     osc3.start(now + 0.30);
                     osc3.stop(now + 1.5);
                 } catch (e) {
-                    // Silent fail — kalau browser blokir audio, tidak masalah
                     console.log('Welcome sound not played:', e);
                 }
             }
 
-            // Play sound saat overlay muncul (delay 200ms biar sinkron dengan animasi)
             setTimeout(playWelcomeSound, 200);
 
-            // Auto-remove overlay setelah selesai (3.1 detik)
             setTimeout(function () {
                 var overlay = document.getElementById('welcomeOverlay');
                 if (overlay) overlay.remove();
@@ -231,15 +373,14 @@
         $user = auth()->user();
         $userDiv = strtolower(trim($user->divisi ?? $user->division ?? ''));
         $userRole = strtolower(trim($user->role ?? ''));
-        
+
         $isAllAccess = str_contains($userDiv, 'pembina') || str_contains($userDiv, 'ketua') || $userRole === 'administrator' || str_contains($userRole, 'ustadz');
-        
+
         $isLapangan = str_contains($userDiv, 'lapangan');
         $isEditing = str_contains($userDiv, 'editing');
         $isBroadcast = str_contains($userDiv, 'broadcast');
         $isAiResearch = str_contains($userDiv, 'ai') || str_contains($userDiv, 'research');
 
-        // Statistik Project Pengguna
         $userCompletedProjects = 0;
         $userActiveProjects = 0;
         if ($user) {
@@ -252,7 +393,6 @@
             })->where('status', '!=', 'Completed')->count();
         }
 
-        // Avatar URL yang benar menggunakan asset('storage/...')
         $avatarUrl = ($user && $user->avatar)
             ? asset('storage/avatars/' . $user->avatar)
             : asset('sb-admin-2/img/undraw_profile.svg');
@@ -272,33 +412,43 @@
 
             <hr class="sidebar-divider my-0">
 
-            <!-- Nav Item - Dashboard -->
             <li class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
                 <a class="nav-link" href="{{ url('/dashboard') }}">
                     <i class="fas fa-fw fa-tachometer-alt"></i>
                     <span>Dashboard</span></a>
             </li>
 
+            <li class="nav-item {{ request()->routeIs('meetings.*') ? 'active' : '' }}">
+                <a class="nav-link" href="{{ route('meetings.index') }}">
+                    <i class="fas fa-fw fa-calendar-alt"></i>
+                    <span>Rapat & Notulen</span></a>
+            </li>
+
+            @if($isAllAccess)
+            <li class="nav-item {{ request()->routeIs('workdesk*') ? 'active' : '' }}">
+                <a class="nav-link" href="{{ route('workdesk') }}">
+                    <i class="fas fa-fw fa-briefcase"></i>
+                    <span>Workdesk</span></a>
+            </li>
+            @endif
+
             <hr class="sidebar-divider">
 
             @if($isAllAccess)
                 <div class="sidebar-heading">Menu Utama</div>
-                
-                <!-- Nav Item - Project Management -->
+
                 <li class="nav-item {{ request()->routeIs('projects.*') ? 'active' : '' }}">
                     <a class="nav-link" href="{{ route('projects.index') }}">
                         <i class="fas fa-fw fa-project-diagram"></i>
                         <span>Project Management</span></a>
                 </li>
-                
-                <!-- Nav Item - Stock Management -->
+
                 <li class="nav-item {{ request()->routeIs('contents.*') ? 'active' : '' }}">
                     <a class="nav-link" href="{{ route('contents.index') }}">
                         <i class="fas fa-fw fa-boxes"></i>
                         <span>Stock Management</span></a>
                 </li>
-                
-                <!-- Nav Item - Team Management -->
+
                 <li class="nav-item {{ request()->routeIs('team.*') ? 'active' : '' }}">
                     <a class="nav-link" href="{{ url('/team') }}">
                         <i class="fas fa-fw fa-users"></i>
@@ -307,8 +457,7 @@
 
                 <hr class="sidebar-divider">
                 <div class="sidebar-heading">Monitoring Divisi</div>
-                
-                <!-- Nav Item - Tim & Laporan -->
+
                 <li class="nav-item {{ request()->routeIs('division.*') ? 'active' : '' }}">
                     <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseMonitoring"
                         aria-expanded="true" aria-controls="collapseMonitoring">
@@ -325,8 +474,7 @@
                         </div>
                     </div>
                 </li>
-                
-                <!-- Nav Item - Cetak Laporan -->
+
                 <li class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
                     <a class="nav-link" href="{{ route('reports.index') }}">
                         <i class="fas fa-fw fa-print"></i>
@@ -376,11 +524,9 @@
                         <i class="fa fa-bars"></i>
                     </button>
 
-                    <!-- Topbar Navbar -->
                     <ul class="navbar-nav ml-auto">
                         <div class="topbar-divider d-none d-sm-block"></div>
 
-                        <!-- Nav Item - User Information -->
                         <li class="nav-item dropdown no-arrow">
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
                                 data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
@@ -388,10 +534,9 @@
                                 <img class="img-profile rounded-circle shadow-sm" src="{{ $avatarUrl }}" style="width: 40px; height: 40px; object-fit: cover;">
                             </a>
 
-                            <!-- Dropdown Detail Profil -->
                             <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in profile-dropdown-card"
                                 aria-labelledby="userDropdown">
-                                
+
                                 <div class="text-center mb-3">
                                     <img class="rounded-circle mb-2 shadow" src="{{ $avatarUrl }}" style="width: 85px; height: 85px; object-fit: cover; border: 3px solid #4e73df;">
                                     <h5 class="font-weight-bold text-gray-900 mb-1" style="font-size: 17px;">{{ $user->name ?? '-' }}</h5>
@@ -438,6 +583,24 @@
                         </div>
                     @endif
 
+                    @if(session('info'))
+                        <div class="alert alert-info alert-dismissible fade show" role="alert">
+                            {{ session('info') }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    @endif
+
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    @endif
+
                     @yield('content')
                 </div>
                 <!-- /.container-fluid -->
@@ -471,11 +634,9 @@
                     <div class="form-group">
                         <input type="file" id="imageInput" class="form-control-file mb-3" accept="image/png, image/jpeg, image/jpg">
                     </div>
-                    <!-- Area Crop Gambar -->
                     <div class="img-container" style="display: none;">
                         <img id="imageToCrop" src="" alt="Picture">
                     </div>
-                    <!-- Input tersembunyi untuk menampung data base64 hasil crop -->
                     <input type="hidden" name="cropped_avatar" id="croppedAvatarInput">
                 </div>
                 <div class="modal-footer">
@@ -511,7 +672,6 @@
         </div>
     </div>
 
-    <!-- Bootstrap core JavaScript & Cropper.js Script -->
     <script src="{{ asset('sb-admin-2/vendor/jquery/jquery.min.js') }}"></script>
     <script src="{{ asset('sb-admin-2/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ asset('sb-admin-2/vendor/jquery-easing/jquery.easing.min.js') }}"></script>
@@ -536,12 +696,12 @@
                     imageToCrop.src = e.target.result;
                     imgContainer.style.display = 'block';
                     cropAndUploadBtn.style.display = 'inline-block';
-                    
+
                     if (cropper) {
                         cropper.destroy();
                     }
                     cropper = new Cropper(imageToCrop, {
-                        aspectRatio: 1, // Persegi (1:1) agar pas untuk foto profil bulat
+                        aspectRatio: 1,
                         viewMode: 1,
                     });
                 };
@@ -561,6 +721,8 @@
             }
         });
     </script>
+
+    @stack('scripts')
 
 </body>
 

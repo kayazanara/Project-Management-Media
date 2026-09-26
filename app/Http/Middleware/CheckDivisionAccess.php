@@ -4,41 +4,61 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 class CheckDivisionAccess
 {
-    public function handle(Request $request, Closure $next, $allowedAccess): Response
+    /**
+     * Mapping parameter role → validasi
+     * Format: 'param' => callback($user) : bool
+     */
+    protected function checkAccess($user, string $role): bool
     {
-        // Jika belum login, tendang ke halaman login (tidak punya akun = tidak ada akses)
-        if (!auth()->check()) {
-            return redirect()->route('login')->with('error', 'Anda harus login terlebih dahulu.');
+        $divisionRole = $user->division_role ?? 'anggota';
+        $division = strtolower($user->division ?? '');
+
+        // Support multi-role dengan tanda | (OR)
+        // Contoh: 'pembina|ketua_media'
+        if (str_contains($role, '|')) {
+            foreach (explode('|', $role) as $r) {
+                if ($this->checkAccess($user, trim($r))) {
+                    return true;
+                }
+            }
+            return false;
         }
 
-        $user = auth()->user();
-        $divisi = strtolower(trim($user->divisi ?? $user->division ?? ''));
-        $role = strtolower(trim($user->role ?? ''));
+        return match ($role) {
+            // ── Role-based (division_role) ──
+            'pembina'       => $divisionRole === 'pembina',
+            'ketua_media'   => $divisionRole === 'ketua_media',
+            'kepala_divisi' => $divisionRole === 'kepala_divisi',
+            'anggota'       => $divisionRole === 'anggota',
+            'manager'       => in_array($divisionRole, ['pembina', 'ketua_media']),
 
-        // 1. Pembina Media & Ketua / Administrator: Seluruh menu
-        if (str_contains($divisi, 'pembina') || str_contains($divisi, 'ketua') || $role === 'administrator' || str_contains($role, 'ustadz')) {
-            return $next($request);
+            // ── Division-based (backward compat) ──
+            'broadcast'     => str_contains($division, 'broadcast'),
+            'lapangan'      => str_contains($division, 'lapangan'),
+            'editing'       => str_contains($division, 'editing'),
+            'ai_research'   => str_contains($division, 'ai') || str_contains($division, 'research'),
+
+            default         => false,
+        };
+    }
+
+    public function handle(Request $request, Closure $next, string $role): Response
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            return redirect('/login');
         }
 
-        // 2. Hak akses spesifik per divisi
-        if ($allowedAccess === 'lapangan' && str_contains($divisi, 'lapangan')) {
-            return $next($request);
-        }
-        if ($allowedAccess === 'editing' && str_contains($divisi, 'editing')) {
-            return $next($request);
-        }
-        if ($allowedAccess === 'broadcast' && (str_contains($divisi, 'broadcast') || str_contains($divisi, 'stock'))) {
-            return $next($request);
-        }
-        if ($allowedAccess === 'ai_research' && (str_contains($divisi, 'ai') || str_contains($divisi, 'research'))) {
-            return $next($request);
+        if (!$this->checkAccess($user, $role)) {
+            abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
 
-        // Jika tidak sesuai hak aksesnya, batasi
-        abort(403, 'Akses ditolak. Anda tidak memiliki izin untuk membuka halaman ini.');
+        return $next($request);
     }
 }
