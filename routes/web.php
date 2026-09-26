@@ -52,7 +52,6 @@ Route::middleware(['auth'])->group(function () {
     // ==========================================
     // MEETINGS / RAPAT & NOTULEN
     // ==========================================
-
     Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');
 
     Route::patch('/meetings/action-items/{itemId}/toggle', [MeetingController::class, 'toggleActionItem'])
@@ -74,7 +73,6 @@ Route::middleware(['auth'])->group(function () {
     // ==========================================
     // PROJECT & TASK
     // ==========================================
-
     Route::post('/projects/{id}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
     Route::patch('/tasks/{id}/toggle', [ProjectController::class, 'toggleTask'])->name('tasks.toggle');
 
@@ -132,6 +130,7 @@ Route::middleware(['auth'])->group(function () {
 
     // ==========================================
     // UPLOAD 3 JENIS — HARUS DI ATAS RESOURCE
+    // (semua role bisa akses, guard di controller)
     // ==========================================
     Route::get('/contents/upload-raw', [ContentController::class, 'formRaw'])->name('contents.formRaw');
     Route::post('/contents/upload-raw', [ContentController::class, 'uploadRaw'])->name('contents.uploadRaw');
@@ -148,9 +147,9 @@ Route::middleware(['auth'])->group(function () {
         ->name('contents.broadcastMetadata');
 
     // ==========================================
-    // STOCK MANAGEMENT
+    // STOCK MANAGEMENT — ⚡ FIX: tambah kepala_divisi
     // ==========================================
-    Route::middleware(['divisi.access:pembina|broadcast|manager'])->group(function () {
+    Route::middleware(['divisi.access:pembina|broadcast|manager|kepala_divisi'])->group(function () {
         Route::resource('contents', ContentController::class)->except(['show']);
         Route::patch('/contents/{id}/status', [ContentController::class, 'updateStatus'])->name('contents.status');
     });
