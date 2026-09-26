@@ -60,6 +60,7 @@
                     <button class="btn btn-outline-secondary btn-sm btn-block" data-toggle="modal" data-target="#changeBgModal">
                         <i class="fas fa-image mr-1"></i> Ganti Background
                     </button>
+                    <small class="text-muted d-block mt-2">Ukuran ideal: <strong>851 × 315 px</strong></small>
                 </div>
             </div>
         </div>
@@ -146,112 +147,200 @@
         </div>
     </div>
 
+    {{-- ===================================================== --}}
+    {{-- MODAL GANTI BACKGROUND (851 x 315) --}}
+    {{-- ===================================================== --}}
     <div class="modal fade" id="changeBgModal" tabindex="-1" role="dialog">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <form action="{{ route('profile.updateBackground') }}" method="POST" id="bgForm" class="modal-content">
                 @csrf
                 <div class="modal-header">
-                    <h5 class="modal-title font-weight-bold text-primary">Ganti Background Profil</h5>
+                    <h5 class="modal-title font-weight-bold text-primary">
+                        <i class="fas fa-image mr-1"></i> Ganti Background Profil
+                    </h5>
                     <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
                 </div>
-                <div class="modal-body text-center">
+                <div class="modal-body">
+                    <div class="alert alert-info small mb-3">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        <strong>Ukuran ideal: 851 × 315 px</strong> (rasio ~2.7:1). Setelah pilih gambar, atur posisi/zoom, lalu klik <strong>"Simpan Background"</strong>.
+                    </div>
+
                     <div class="form-group">
-                        <input type="file" id="bgInput" class="form-control-file mb-3" accept="image/*">
+                        <input type="file" id="bgInput" class="form-control-file" accept="image/*">
                     </div>
-                    <div id="bgCropContainer" style="display: none; max-height: 350px;">
-                        <img id="bgToCrop" src="" style="max-width: 100%;">
+
+                    <div id="bgCropContainer" style="display: none;">
+                        <p class="text-muted small mb-2">
+                            <i class="fas fa-arrows-alt mr-1"></i>Drag untuk menggeser • Scroll untuk zoom
+                        </p>
+                        <div style="max-height: 400px; background: #f8f9fa; border-radius: 8px; padding: 8px;">
+                            <img id="bgToCrop" src="" style="max-width: 100%; display: block;">
+                        </div>
                     </div>
+
                     <input type="hidden" name="cropped_background" id="croppedBgInput">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-primary btn-sm" id="bgSaveBtn" style="display: none;">Simpan Background</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="bgSaveBtn" disabled>
+                        <i class="fas fa-save mr-1"></i> Simpan Background
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
+    {{-- ===================================================== --}}
+    {{-- MODAL GANTI AVATAR --}}
+    {{-- ===================================================== --}}
     <div class="modal fade" id="changeAvatarModal" tabindex="-1" role="dialog">
         <div class="modal-dialog modal-dialog-centered">
             <form action="{{ route('profile.updateAvatar') }}" method="POST" id="cropForm" class="modal-content">
                 @csrf
                 <div class="modal-header">
-                    <h5 class="modal-title font-weight-bold text-primary">Ganti Foto Profil</h5>
+                    <h5 class="modal-title font-weight-bold text-primary">
+                        <i class="fas fa-camera mr-1"></i> Ganti Foto Profil
+                    </h5>
                     <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
                 </div>
-                <div class="modal-body text-center">
+                <div class="modal-body">
                     <div class="form-group">
-                        <input type="file" id="imageInput" class="form-control-file mb-3" accept="image/*">
+                        <input type="file" id="imageInput" class="form-control-file" accept="image/*">
                     </div>
-                    <div class="img-container" style="display: none;">
+                    <div class="img-container" style="display: none; background: #f8f9fa; border-radius: 8px; padding: 8px;">
                         <img id="imageToCrop" src="" style="max-width: 100%;">
                     </div>
                     <input type="hidden" name="cropped_avatar" id="croppedAvatarInput">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-primary btn-sm" id="cropAndUploadBtn" style="display: none;">Simpan Foto</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="cropAndUploadBtn" disabled>
+                        <i class="fas fa-save mr-1"></i> Simpan Foto
+                    </button>
                 </div>
             </form>
         </div>
     </div>
+
+    {{-- Load Cropper.js inline (biar tidak tergantung @stack) --}}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // ==========================================
+            // BACKGROUND CROP (851 x 315)
+            // ==========================================
+            let bgCropper = null;
+            const bgInput = document.getElementById('bgInput');
+            const bgToCrop = document.getElementById('bgToCrop');
+            const bgCropContainer = document.getElementById('bgCropContainer');
+            const bgSaveBtn = document.getElementById('bgSaveBtn');
+            const croppedBgInput = document.getElementById('croppedBgInput');
+            const bgForm = document.getElementById('bgForm');
+
+            if (bgInput) {
+                bgInput.addEventListener('change', function (e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = function (ev) {
+                        bgToCrop.src = ev.target.result;
+                        bgCropContainer.style.display = 'block';
+
+                        if (bgCropper) {
+                            bgCropper.destroy();
+                        }
+
+                        // Aspect ratio 851:315 ≈ 2.702
+                        bgCropper = new Cropper(bgToCrop, {
+                            aspectRatio: 851 / 315,
+                            viewMode: 1,
+                            autoCropArea: 0.9,
+                            responsive: true,
+                            background: false,
+                            guides: true,
+                            center: true,
+                            highlight: false,
+                            movable: true,
+                            zoomable: true,
+                        });
+
+                        bgSaveBtn.disabled = false;
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            if (bgForm) {
+                bgForm.addEventListener('submit', function (e) {
+                    if (bgCropper) {
+                        e.preventDefault();
+                        // Output tepat 851 x 315
+                        const canvas = bgCropper.getCroppedCanvas({
+                            width: 851,
+                            height: 315,
+                            imageSmoothingEnabled: true,
+                            imageSmoothingQuality: 'high',
+                        });
+                        croppedBgInput.value = canvas.toDataURL('image/jpeg', 0.9);
+                        this.submit();
+                    }
+                });
+            }
+
+            // ==========================================
+            // AVATAR CROP (1:1)
+            // ==========================================
+            let avatarCropper = null;
+            const imageInput = document.getElementById('imageInput');
+            const imageToCrop = document.getElementById('imageToCrop');
+            const cropForm = document.getElementById('cropForm');
+            const croppedAvatarInput = document.getElementById('croppedAvatarInput');
+            const cropAndUploadBtn = document.getElementById('cropAndUploadBtn');
+
+            if (imageInput) {
+                imageInput.addEventListener('change', function (e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = function (ev) {
+                        imageToCrop.src = ev.target.result;
+                        document.querySelector('#changeAvatarModal .img-container').style.display = 'block';
+
+                        if (avatarCropper) {
+                            avatarCropper.destroy();
+                        }
+
+                        avatarCropper = new Cropper(imageToCrop, {
+                            aspectRatio: 1,
+                            viewMode: 1,
+                            autoCropArea: 0.9,
+                        });
+
+                        cropAndUploadBtn.disabled = false;
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            if (cropForm) {
+                cropForm.addEventListener('submit', function (e) {
+                    if (avatarCropper) {
+                        e.preventDefault();
+                        const canvas = avatarCropper.getCroppedCanvas({
+                            width: 400,
+                            height: 400,
+                            imageSmoothingEnabled: true,
+                            imageSmoothingQuality: 'high',
+                        });
+                        croppedAvatarInput.value = canvas.toDataURL('image/jpeg', 0.9);
+                        this.submit();
+                    }
+                });
+            }
+        });
+    </script>
 @endsection
-
-@push('scripts')
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<script>
-    let avatarCropper;
-    const imageInput = document.getElementById('imageInput');
-    if (imageInput) {
-        imageInput.addEventListener('change', function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = document.getElementById('imageToCrop');
-                img.src = ev.target.result;
-                document.querySelector('.img-container').style.display = 'block';
-                document.getElementById('cropAndUploadBtn').style.display = 'inline-block';
-                if (avatarCropper) avatarCropper.destroy();
-                avatarCropper = new Cropper(img, { aspectRatio: 1, viewMode: 1 });
-            };
-            reader.readAsDataURL(file);
-        });
-        document.getElementById('cropForm').addEventListener('submit', function (e) {
-            if (avatarCropper) {
-                e.preventDefault();
-                const canvas = avatarCropper.getCroppedCanvas({ width: 400, height: 400 });
-                document.getElementById('croppedAvatarInput').value = canvas.toDataURL('image/jpeg', 0.9);
-                this.submit();
-            }
-        });
-    }
-
-    let bgCropper;
-    const bgInput = document.getElementById('bgInput');
-    if (bgInput) {
-        bgInput.addEventListener('change', function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = document.getElementById('bgToCrop');
-                img.src = ev.target.result;
-                document.getElementById('bgCropContainer').style.display = 'block';
-                document.getElementById('bgSaveBtn').style.display = 'inline-block';
-                if (bgCropper) bgCropper.destroy();
-                bgCropper = new Cropper(img, { aspectRatio: 16 / 6, viewMode: 1 });
-            };
-            reader.readAsDataURL(file);
-        });
-        document.getElementById('bgForm').addEventListener('submit', function (e) {
-            if (bgCropper) {
-                e.preventDefault();
-                const canvas = bgCropper.getCroppedCanvas({ width: 1200, height: 450 });
-                document.getElementById('croppedBgInput').value = canvas.toDataURL('image/jpeg', 0.85);
-                this.submit();
-            }
-        });
-    }
-</script>
-@endpush
