@@ -38,6 +38,11 @@
         // Task summary
         $completedTasksList = $project->tasks->where('status', 'Completed');
         $pendingTasksList = $project->tasks->where('status', '!=', 'Completed');
+
+        // ⚡ Fallback: kalau controller tidak mengirim, hitung sendiri
+        if (!isset($projectContentsCount)) {
+            $projectContentsCount = \App\Models\Content::where('project_id', $project->id)->count();
+        }
     @endphp
 
     {{-- HEADER --}}
@@ -160,7 +165,7 @@
                     </div>
                 @endif
 
-                {{-- 4. ON PROGRESS — ⚡ tombol buka MODAL, bukan langsung submit --}}
+                {{-- 4. ON PROGRESS --}}
                 @if($project->status === 'On Progress')
                     <div class="text-center py-3">
                         <i class="fas fa-spinner fa-3x text-warning mb-3"></i>
@@ -178,7 +183,7 @@
                     </div>
                 @endif
 
-                {{-- 5. REVIEW — ⚡ TAMPILKAN PENGAJUAN REVIEW --}}
+                {{-- 5. REVIEW --}}
                 @if($project->status === 'Review')
                     <div class="py-3">
                         <div class="text-center mb-4">
@@ -187,7 +192,6 @@
                             <p class="text-muted mb-0">Menunggu persetujuan Pembina & Ketua Media.</p>
                         </div>
 
-                        {{-- ⚡ PANEL PENGAJUAN REVIEW --}}
                         @if($latestReviewRequest)
                             <div class="card border-left-info mb-4">
                                 <div class="card-body">
@@ -217,7 +221,6 @@
 
                                     <hr>
 
-                                    {{-- Ringkasan Task --}}
                                     <div class="row text-center mb-3">
                                         <div class="col-4">
                                             <div class="h5 mb-0 font-weight-bold text-success">{{ $completedTasksList->count() }}</div>
@@ -233,7 +236,6 @@
                                         </div>
                                     </div>
 
-                                    {{-- Daftar Task yang Selesai --}}
                                     @if($completedTasksList->count() > 0)
                                         <h6 class="small font-weight-bold text-success mb-2">
                                             <i class="fas fa-check-circle mr-1"></i> Task Selesai
@@ -245,7 +247,6 @@
                                         </ul>
                                     @endif
 
-                                    {{-- Daftar Task yang Belum Selesai --}}
                                     @if($pendingTasksList->count() > 0)
                                         <h6 class="small font-weight-bold text-warning mb-2">
                                             <i class="fas fa-exclamation-circle mr-1"></i> Task Belum Selesai
@@ -260,7 +261,6 @@
                             </div>
                         @endif
 
-                        {{-- Status ACC --}}
                         <div class="row justify-content-center mb-3">
                             <div class="col-md-5">
                                 <div class="card border-{{ $project->approved_by_pembina_at ? 'success' : 'secondary' }}">
@@ -314,7 +314,7 @@
                     </div>
                 @endif
 
-                {{-- 6. REVISION — ⚡ tombol buka modal --}}
+                {{-- 6. REVISION --}}
                 @if($project->status === 'Revision')
                     <div class="py-3">
                         <div class="text-center mb-3">
@@ -361,23 +361,79 @@
                     </div>
                 @endif
 
-                {{-- 8. UPLOAD --}}
+                {{-- 8. UPLOAD — ⚡ Dengan guard content + tombol upload --}}
                 @if($project->status === 'Upload')
-                    <div class="text-center py-3">
-                        <i class="fas fa-upload fa-3x text-primary mb-3"></i>
-                        <h5>Tahap Upload</h5>
-                        <p class="text-muted mb-3">
-                            Upload konten (raw / stock / activity). Setelah selesai, klik "Mark Complete".
-                        </p>
+                    <div class="py-3">
+                        <div class="text-center mb-4">
+                            <i class="fas fa-upload fa-3x text-primary mb-3"></i>
+                            <h5>Tahap Upload</h5>
+                            <p class="text-muted mb-0">
+                                Upload konten (raw / stock / activity). Setelah selesai, klik "Mark Complete".
+                            </p>
+                        </div>
+
                         @if($isManager || $isKepalaDivisi)
-                            <form action="{{ route('projects.markComplete', $project->id) }}" method="POST" class="d-inline">
-                                @csrf
-                                @method('PATCH')
-                                <button type="submit" class="btn btn-success"
-                                        onclick="return confirm('Tandai project sebagai COMPLETED?')">
-                                    <i class="fas fa-check-double mr-1"></i> Mark as Complete
-                                </button>
-                            </form>
+                            @php
+                                $hasContent = $projectContentsCount > 0;
+                            @endphp
+
+                            @if($hasContent)
+                                {{-- Sudah ada konten, boleh complete --}}
+                                <div class="alert alert-success small mb-3">
+                                    <i class="fas fa-check-circle mr-1"></i>
+                                    <strong>{{ $projectContentsCount }} konten</strong> sudah di-upload untuk project ini. Siap di-complete.
+                                </div>
+
+                                <div class="text-center mb-3">
+                                    <a href="{{ route('contents.formRaw', ['project_id' => $project->id]) }}" class="btn btn-outline-info btn-sm">
+                                        <i class="fas fa-file-upload mr-1"></i> Upload Raw Lagi
+                                    </a>
+                                    <a href="{{ route('contents.formStock', ['project_id' => $project->id]) }}" class="btn btn-outline-success btn-sm">
+                                        <i class="fas fa-boxes mr-1"></i> Upload Stock Lagi
+                                    </a>
+                                    <a href="{{ route('contents.formActivity', ['project_id' => $project->id]) }}" class="btn btn-outline-warning btn-sm">
+                                        <i class="fas fa-video mr-1"></i> Upload Activity Lagi
+                                    </a>
+                                </div>
+
+                                <div class="text-center">
+                                    <form action="{{ route('projects.markComplete', $project->id) }}" method="POST" class="d-inline">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-success btn-lg"
+                                                onclick="return confirm('Tandai project sebagai COMPLETED?')">
+                                            <i class="fas fa-check-double mr-1"></i> Mark as Complete
+                                        </button>
+                                    </form>
+                                </div>
+                            @else
+                                {{-- Belum ada konten --}}
+                                <div class="alert alert-warning mb-3">
+                                    <h6 class="font-weight-bold mb-2">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                                        Belum Ada Konten yang Di-upload
+                                    </h6>
+                                    <p class="small mb-2">
+                                        Sebelum bisa <strong>Mark Complete</strong>, minimal upload <strong>1 konten</strong> (raw / stock / activity).
+                                    </p>
+                                    <p class="small mb-0">
+                                        <strong>Kalau tidak ada bahan</strong> untuk di-upload, silakan upload <strong>Activity</strong> —
+                                        seperti live kajian / event — dan isi deskripsinya sebagai dokumentasi project.
+                                    </p>
+                                </div>
+
+                                <div class="text-center">
+                                    <a href="{{ route('contents.formActivity', ['project_id' => $project->id]) }}" class="btn btn-primary">
+                                        <i class="fas fa-video mr-1"></i> Upload Activity Dulu
+                                    </a>
+                                    <a href="{{ route('contents.formStock', ['project_id' => $project->id]) }}" class="btn btn-outline-success btn-sm ml-1">
+                                        <i class="fas fa-boxes mr-1"></i> Upload Stock
+                                    </a>
+                                    <a href="{{ route('contents.formRaw', ['project_id' => $project->id]) }}" class="btn btn-outline-info btn-sm ml-1">
+                                        <i class="fas fa-file-upload mr-1"></i> Upload Raw
+                                    </a>
+                                </div>
+                            @endif
                         @endif
                     </div>
                 @endif
@@ -417,16 +473,16 @@
                     <p><strong>Timeline:</strong></p>
                     <small class="text-muted">
                         @if($project->released_at)
-                            ✅ Rilis: {{ $project->released_at->format('d M Y H:i') }}<br>
+                            Rilis: {{ $project->released_at->format('d M Y H:i') }}<br>
                         @endif
                         @if($project->approved_by_pembina_at)
-                            ✅ Approved Pembina: {{ $project->approved_by_pembina_at->format('d M Y H:i') }}<br>
+                            Approved Pembina: {{ $project->approved_by_pembina_at->format('d M Y H:i') }}<br>
                         @endif
                         @if($project->approved_by_ketua_at)
-                            ✅ Approved Ketua Media: {{ $project->approved_by_ketua_at->format('d M Y H:i') }}<br>
+                            Approved Ketua Media: {{ $project->approved_by_ketua_at->format('d M Y H:i') }}<br>
                         @endif
                         @if($project->completed_at)
-                            🎉 Completed: {{ $project->completed_at->format('d M Y H:i') }}
+                            Completed: {{ $project->completed_at->format('d M Y H:i') }}
                         @endif
                     </small>
                 </div>
@@ -449,7 +505,7 @@
         </div>
     </div>
 
-    {{-- ⚡ RIWAYAT REVISI + PENGAJUAN REVIEW --}}
+    {{-- RIWAYAT REVISI + PENGAJUAN REVIEW --}}
     @php
         $allRevisionHistory = $project->revisions;
     @endphp
@@ -738,7 +794,7 @@
     </div>
     @endif
 
-    {{-- ⚡ Review Request Modal (Kepala Divisi) --}}
+    {{-- Review Request Modal --}}
     @if($isKepalaDivisi && in_array($project->status, ['On Progress', 'Revision']))
     <div class="modal fade" id="reviewRequestModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -775,7 +831,6 @@
                         <small class="text-muted">Link Google Drive / Dropbox / WeTransfer, dll.</small>
                     </div>
 
-                    {{-- Ringkasan Task --}}
                     <hr>
                     <h6 class="small font-weight-bold text-muted mb-2">
                         <i class="fas fa-tasks mr-1"></i> Ringkasan Task
@@ -815,7 +870,7 @@
     </div>
     @endif
 
-    {{-- Revision Modal (Manager) --}}
+    {{-- Revision Modal --}}
     @if($isManager && $project->status === 'Review')
     <div class="modal fade" id="revisionModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">

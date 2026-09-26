@@ -194,19 +194,23 @@ class ContentController extends Controller
         ]);
     }
 
-    public function formStock()
+    // ⚡ FIX: terima project_id dari query string
+    public function formStock(Request $request)
     {
         return view('contents.upload-stock', [
-            'title'    => 'Upload Content Stock',
-            'projects' => Project::orderBy('name')->get(),
+            'title'            => 'Upload Content Stock',
+            'projects'         => Project::orderBy('name')->get(),
+            'defaultProjectId' => $request->input('project_id'),
         ]);
     }
 
-    public function formActivity()
+    // ⚡ FIX: terima project_id dari query string
+    public function formActivity(Request $request)
     {
         return view('contents.upload-activity', [
-            'title'    => 'Upload Activity',
-            'projects' => Project::orderBy('name')->get(),
+            'title'            => 'Upload Activity',
+            'projects'         => Project::orderBy('name')->get(),
+            'defaultProjectId' => $request->input('project_id'),
         ]);
     }
 
@@ -216,8 +220,7 @@ class ContentController extends Controller
 
     /**
      * Upload Raw.
-     * ⚡ FIX: 'platform' diisi [] supaya lolos NOT NULL constraint.
-     *          Sebelumnya hanya mengisi 'type' — masih ada platform yang belum.
+     * platform diisi [] supaya lolos NOT NULL constraint.
      */
     public function uploadRaw(Request $request)
     {
@@ -245,7 +248,7 @@ class ContentController extends Controller
             'project_id'      => $project->id,
             'title'           => $request->title,
             'type'            => 'Raw Material',
-            'platform'        => [],                   // ⚡ WAJIB — kolom NOT NULL
+            'platform'        => [],
             'upload_type'     => 'raw',
             'target_division' => $request->target_division,
             'file_url'        => $request->file_url,
@@ -282,7 +285,6 @@ class ContentController extends Controller
 
     /**
      * Upload Content Stock.
-     * (platform diisi dari input form → aman)
      */
     public function uploadStock(Request $request)
     {
@@ -343,7 +345,7 @@ class ContentController extends Controller
 
     /**
      * Upload Activity.
-     * ⚡ FIX: 'platform' diisi [] supaya lolos NOT NULL constraint.
+     * platform diisi [] supaya lolos NOT NULL constraint.
      */
     public function uploadActivity(Request $request)
     {
@@ -357,7 +359,10 @@ class ContentController extends Controller
             'project_id' => 'required|exists:projects,id',
             'title'      => 'required|string|max:255',
             'file_url'   => 'nullable|string',
-            'caption'    => 'nullable|string',
+            'caption'    => 'required|string|min:10',
+        ], [
+            'caption.required' => 'Deskripsi activity wajib diisi (min 10 karakter).',
+            'caption.min'      => 'Deskripsi activity minimal 10 karakter.',
         ]);
 
         $contentCode = $this->generateContentCode('ACT');
@@ -367,7 +372,7 @@ class ContentController extends Controller
             'project_id'   => $request->project_id,
             'title'        => $request->title,
             'type'         => 'Activity',
-            'platform'     => [],                     // ⚡ WAJIB — kolom NOT NULL
+            'platform'     => [],
             'upload_type'  => 'activity',
             'file_url'     => $request->file_url,
             'caption'      => $request->caption,

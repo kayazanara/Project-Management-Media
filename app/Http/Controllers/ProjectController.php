@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\ProjectTask;
 use App\Models\ProjectRevision;
+use App\Models\Content;
 use App\Events\ProjectCreated;
 use App\Services\ProjectWorkflowService;
 use App\Services\WhatsappNotifier;
@@ -212,7 +213,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // SHOW (Detail Project)
+    // SHOW
     // ============================================================
 
     public function show($id)
@@ -240,15 +241,16 @@ class ProjectController extends Controller
 
         $availableActions = $this->workflow->getAvailableActions($project, Auth::user());
 
-        // Ambil pengajuan review terakhir (untuk ditampilkan di tahap Review)
         $latestReviewRequest = $project->revisions()
             ->where('type', 'review_request')
             ->first();
 
-        // Ambil catatan revisi terakhir (untuk ditampilkan di tahap Revision)
         $latestRevision = $project->revisions()
             ->where('type', 'revision')
             ->first();
+
+        // ⚡ Cek jumlah konten untuk guard di view
+        $projectContentsCount = Content::where('project_id', $project->id)->count();
 
         return view('projects.show', [
             'title' => 'Detail Project: ' . $project->name,
@@ -258,6 +260,7 @@ class ProjectController extends Controller
             'availableActions' => $availableActions,
             'latestReviewRequest' => $latestReviewRequest,
             'latestRevision' => $latestRevision,
+            'projectContentsCount' => $projectContentsCount,
         ]);
     }
 
@@ -359,7 +362,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // WORKFLOW: 1. SUBMIT TASK REVIEW (Ketua Media)
+    // WORKFLOW: 1. SUBMIT TASK REVIEW
     // ============================================================
 
     public function submitTaskReview($id)
@@ -403,7 +406,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // WORKFLOW: 2. SUBMIT SCORING (Pembina)
+    // WORKFLOW: 2. SUBMIT SCORING
     // ============================================================
 
     public function submitScoring(Request $request, $id)
@@ -450,7 +453,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // WORKFLOW: 3. RELEASE (Pembina)
+    // WORKFLOW: 3. RELEASE
     // ============================================================
 
     public function release($id)
@@ -511,8 +514,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // WORKFLOW: 4. REQUEST REVIEW (Kepala Divisi)
-    // + Catatan pengantar + Link file hasil
+    // WORKFLOW: 4. REQUEST REVIEW
     // ============================================================
 
     public function requestReview(Request $request, $id)
@@ -537,7 +539,6 @@ class ProjectController extends Controller
             'note.min'      => 'Catatan pengantar minimal 10 karakter.',
         ]);
 
-        // Simpan pengajuan review
         ProjectRevision::create([
             'project_id' => $project->id,
             'user_id'    => $user->id,
@@ -548,7 +549,6 @@ class ProjectController extends Controller
 
         $project->update(['status' => Project::STATUS_REVIEW]);
 
-        // Notif WA ke Pembina + Ketua Media
         $recipients = User::whereIn('division_role', ['pembina', 'ketua_media'])
             ->where('status', 'Aktif')
             ->get();
@@ -573,7 +573,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // WORKFLOW: 5. REQUEST REVISION (Pembina / Ketua Media)
+    // WORKFLOW: 5. REQUEST REVISION
     // ============================================================
 
     public function requestRevision(Request $request, $id)
@@ -635,7 +635,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // WORKFLOW: 6. APPROVE (Pembina / Ketua Media)
+    // WORKFLOW: 6. APPROVE
     // ============================================================
 
     public function approve($id)
@@ -700,6 +700,7 @@ class ProjectController extends Controller
 
     // ============================================================
     // WORKFLOW: 7. MARK COMPLETE
+    // ⚡ FIX: Guard content + redirect dinamis
     // ============================================================
 
     public function markComplete($id)
@@ -713,6 +714,15 @@ class ProjectController extends Controller
 
         if ($project->status !== Project::STATUS_UPLOAD) {
             return back()->with('error', 'Project tidak dalam tahap Upload.');
+        }
+
+        // ⚡ GUARD: minimal 1 konten (raw / stock / activity)
+        $contentCount = Content::where('project_id', $project->id)->count();
+
+        if ($contentCount === 0) {
+            return redirect()
+                ->route('contents.formActivity', ['project_id' => $project->id])
+                ->with('error', 'Project belum bisa di-complete. Minimal upload 1 konten (raw/stock/activity) dulu. Kalau tidak ada bahan, upload Activity (mis: live kajian) dengan deskripsi sebagai dokumentasi.');
         }
 
         $project->update([
@@ -738,6 +748,22 @@ class ProjectController extends Controller
                 $project->id
             )
         );
+
+        // ⚡ FIX: Redirect dinamis — Kepala Divisi ke halaman divisinya sendiri
+        if ($user->isKepalaDivisi()) {
+            $divisionMap = [
+                'Lapangan'    => 'Tim Lapangan',
+                'Editing'     => 'Tim Editing',
+                'Broadcast'   => 'Tim Broadcast',
+                'AI Research' => 'Tim AI Research',
+            ];
+            $divName = $user->division ?? '';
+            $divisionRouteName = $divisionMap[$divName] ?? 'Tim Lapangan';
+
+            return redirect()
+                ->route('division.show', $divisionRouteName)
+                ->with('success', '🎉 Project selesai!');
+        }
 
         return redirect()->route('projects.index')
             ->with('success', '🎉 Project selesai!');

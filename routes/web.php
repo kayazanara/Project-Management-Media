@@ -50,7 +50,6 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/meetings/action-items/{itemId}/toggle', [MeetingController::class, 'toggleActionItem'])
         ->name('meetings.action-items.toggle');
 
-    // Write (manager only) — SPESIFIK di atas
     Route::middleware(['divisi.access:manager'])->group(function () {
         Route::get('/meetings/create', [MeetingController::class, 'create'])->name('meetings.create');
         Route::post('/meetings', [MeetingController::class, 'store'])->name('meetings.store');
@@ -62,20 +61,15 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/meetings/{id}/export-word', [MeetingController::class, 'exportWord'])->name('meetings.exportWord');
     });
 
-    // Show (DINAMIS — paling bawah)
     Route::get('/meetings/{id}', [MeetingController::class, 'show'])->name('meetings.show');
 
     // ==========================================
     // PROJECT & TASK
-    // ⚡ KRITIS: route statis (/projects/create) HARUS di atas
-    //             route dinamis (/projects/{id})
     // ==========================================
 
-    // ── 1. TASK operations ──
     Route::post('/projects/{id}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
     Route::patch('/tasks/{id}/toggle', [ProjectController::class, 'toggleTask'])->name('tasks.toggle');
 
-    // ── 2. WORKFLOW PROJECT (semua punya suffix spesifik) ──
     Route::patch('/projects/{id}/submit-task-review', [ProjectController::class, 'submitTaskReview'])
         ->name('projects.submitTaskReview');
 
@@ -100,9 +94,8 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/projects/{id}/status', [ProjectController::class, 'updateProjectStatus'])
         ->name('projects.updateStatus');
 
-    // ── 3. PROJECT MANAGEMENT (Pembina) ──
-    // ⚡ /projects/create HARUS DI ATAS /projects/{id}
-    Route::middleware(['divisi.access:pembina'])->group(function () {
+    // ⚡ FIX: Ketua Media juga bisa akses Project Management
+    Route::middleware(['divisi.access:manager'])->group(function () {
         Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');
         Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
         Route::get('/projects/{id}/edit', [ProjectController::class, 'edit'])->name('projects.edit');
@@ -114,14 +107,13 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/tasks/{id}', [ProjectController::class, 'updateTask'])->name('tasks.update');
     });
 
-    // ── 4. Route umum (DINAMIS — paling bawah) ──
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
     Route::get('/projects/{id}', [ProjectController::class, 'show'])->name('projects.show');
 
     // ==========================================
-    // TEAM MANAGEMENT (Pembina only)
+    // ⚡ FIX: TEAM MANAGEMENT (Pembina + Ketua Media)
     // ==========================================
-    Route::middleware(['divisi.access:pembina'])->group(function () {
+    Route::middleware(['divisi.access:manager'])->group(function () {
         Route::get('/team', [TeamController::class, 'index'])->name('team.index');
         Route::get('/team/create', [TeamController::class, 'create'])->name('team.create');
         Route::post('/team', [TeamController::class, 'store'])->name('team.store');
@@ -148,9 +140,9 @@ Route::middleware(['auth'])->group(function () {
         ->name('contents.broadcastMetadata');
 
     // ==========================================
-    // STOCK MANAGEMENT (Pembina + Broadcast)
+    // STOCK MANAGEMENT
     // ==========================================
-    Route::middleware(['divisi.access:pembina|broadcast'])->group(function () {
+    Route::middleware(['divisi.access:pembina|broadcast|manager'])->group(function () {
         Route::resource('contents', ContentController::class)->except(['show']);
         Route::patch('/contents/{id}/status', [ContentController::class, 'updateStatus'])->name('contents.status');
     });
@@ -163,9 +155,9 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/division/reports/{id}', [DivisionController::class, 'destroyReport'])->name('division.reports.destroy');
 
     // ==========================================
-    // REPORT / CETAK LAPORAN (Pembina)
+    // ⚡ FIX: REPORT / CETAK LAPORAN (Pembina + Ketua Media)
     // ==========================================
-    Route::middleware(['divisi.access:pembina'])->group(function () {
+    Route::middleware(['divisi.access:manager'])->group(function () {
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
         Route::post('/reports/generate', [ReportController::class, 'generate'])->name('reports.generate');
     });

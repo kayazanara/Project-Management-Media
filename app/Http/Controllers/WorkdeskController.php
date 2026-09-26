@@ -157,7 +157,7 @@ class WorkdeskController extends Controller
     }
 
     // ============================================================
-    // OVERVIEW / ACTIONS / ALERTS
+    // OVERVIEW
     // ============================================================
 
     private function buildOverviewStats(): array
@@ -181,8 +181,7 @@ class WorkdeskController extends Controller
     }
 
     // ============================================================
-    // ⚡ FIX: Semua kategori UNLIMITED (hapus ->take(5))
-    //          + diffInDays di-round() biar tidak desimal
+    // ⚡ FIX: Overdue untuk SEMUA manager (Pembina + Ketua Media)
     // ============================================================
 
     private function buildActionsForUser(User $user): array
@@ -275,13 +274,15 @@ class WorkdeskController extends Controller
                     'cta' => 'Approve',
                 ];
             }
+        }
 
+        // ⚡ Overdue untuk SEMUA manager (Pembina + Ketua Media)
+        if ($user->isManager()) {
             $overdueProjects = Project::where('is_overdue', true)
                 ->where('status', '!=', Project::STATUS_COMPLETED)
                 ->get();
 
             foreach ($overdueProjects as $p) {
-                // ⚡ FIX: round() biar "Lewat deadline 8 hari" bukan "7.7512..."
                 $daysLate = $p->deadline ? round($p->deadline->diffInDays(now())) : 0;
 
                 $actions[] = [
@@ -301,7 +302,7 @@ class WorkdeskController extends Controller
     }
 
     // ============================================================
-    // ALERTS (tetap take(5) / take(3) — widget sudah scrollable)
+    // ALERTS
     // ============================================================
 
     private function buildAlerts(): array
@@ -382,7 +383,7 @@ class WorkdeskController extends Controller
     }
 
     // ============================================================
-    // PERFORMANCE — completion rate konsisten + clamp 100%
+    // PERFORMANCE
     // ============================================================
 
     private function buildDivisionPerformance(): array
