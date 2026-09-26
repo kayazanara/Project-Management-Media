@@ -1,6 +1,18 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    $canEditDelete = false;
+    $authUser = auth()->user();
+    if ($authUser) {
+        if ($authUser->isPembina() || $authUser->isKetuaMedia()) {
+            $canEditDelete = true;
+        } elseif ($authUser->isKepalaDivisi() && str_contains(strtolower($authUser->division ?? ''), 'broadcast')) {
+            $canEditDelete = true;
+        }
+    }
+@endphp
+
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <div>
         <h1 class="h3 mb-0 text-gray-800">
@@ -127,14 +139,27 @@
                             </td>
                             <td class="text-right">
                                 @if($c->upload_type === 'content_stock' && !$c->broadcast_filled_at && (auth()->user()->isBroadcast() || auth()->user()->isManager()))
-                                    <a href="{{ route('contents.formBroadcastMetadata', $c->id) }}" class="btn btn-sm btn-primary">
+                                    <a href="{{ route('contents.formBroadcastMetadata', $c->id) }}" class="btn btn-sm btn-primary" title="Isi Metadata">
                                         <i class="fas fa-tags mr-1"></i> Isi Metadata
                                     </a>
                                 @endif
                                 @if($c->file_url)
-                                    <a href="{{ $c->file_url }}" target="_blank" class="btn btn-sm btn-outline-info">
+                                    <a href="{{ $c->file_url }}" target="_blank" class="btn btn-sm btn-outline-info" title="Buka File">
                                         <i class="fas fa-external-link-alt"></i>
                                     </a>
+                                @endif
+                                @if($canEditDelete)
+                                    <a href="{{ route('contents.edit', $c->id) }}" class="btn btn-sm btn-warning" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <form action="{{ route('contents.destroy', $c->id) }}" method="POST" class="d-inline"
+                                          onsubmit="return confirm('Yakin ingin menghapus konten ini? Tindakan ini tidak bisa dibatalkan.');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-danger" title="Hapus">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
                                 @endif
                             </td>
                         </tr>
@@ -169,6 +194,7 @@
                         <th>Project</th>
                         <th>Status</th>
                         <th>Diupdate</th>
+                        <th class="text-right">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -188,10 +214,25 @@
                                 </span>
                             </td>
                             <td class="small text-muted">{{ $c->updated_at->format('d M Y') }}</td>
+                            <td class="text-right">
+                                @if($canEditDelete)
+                                    <a href="{{ route('contents.edit', $c->id) }}" class="btn btn-sm btn-warning" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <form action="{{ route('contents.destroy', $c->id) }}" method="POST" class="d-inline"
+                                          onsubmit="return confirm('Yakin ingin menghapus konten ini?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-danger" title="Hapus">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                @endif
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-3">Belum ada riwayat.</td>
+                            <td colspan="7" class="text-center text-muted py-3">Belum ada riwayat.</td>
                         </tr>
                     @endforelse
                 </tbody>

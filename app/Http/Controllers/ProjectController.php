@@ -249,7 +249,6 @@ class ProjectController extends Controller
             ->where('type', 'revision')
             ->first();
 
-        // ⚡ Cek jumlah konten untuk guard di view
         $projectContentsCount = Content::where('project_id', $project->id)->count();
 
         return view('projects.show', [
@@ -700,7 +699,6 @@ class ProjectController extends Controller
 
     // ============================================================
     // WORKFLOW: 7. MARK COMPLETE
-    // ⚡ FIX: Guard content + redirect dinamis
     // ============================================================
 
     public function markComplete($id)
@@ -716,7 +714,6 @@ class ProjectController extends Controller
             return back()->with('error', 'Project tidak dalam tahap Upload.');
         }
 
-        // ⚡ GUARD: minimal 1 konten (raw / stock / activity)
         $contentCount = Content::where('project_id', $project->id)->count();
 
         if ($contentCount === 0) {
@@ -749,7 +746,6 @@ class ProjectController extends Controller
             )
         );
 
-        // ⚡ FIX: Redirect dinamis — Kepala Divisi ke halaman divisinya sendiri
         if ($user->isKepalaDivisi()) {
             $divisionMap = [
                 'Lapangan'    => 'Tim Lapangan',
@@ -767,6 +763,91 @@ class ProjectController extends Controller
 
         return redirect()->route('projects.index')
             ->with('success', '🎉 Project selesai!');
+    }
+
+    // ============================================================
+    // WORKFLOW: 8. REOPEN (Batalkan Complete) — NEW
+    // ============================================================
+
+    public function reopen(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        // Akses: Manager ATAU Kepala Divisi yang terlibat di project
+        $isManager = $user->isManager();
+        $isInvolvedKadiv = $user->isKepalaDivisi()
+            && $project->users()->where('users.id', $user->id)->exists();
+
+        if (!$isManager && !$isInvolvedKadiv) {
+            return back()->with('error', 'Hanya Pembina/Ketua Media, atau Kepala Divisi project ini yang bisa membatalkan complete.');
+        }
+
+        if ($project->status !== Project::STATUS_COMPLETED) {
+            return back()->with('error', 'Project tidak dalam status Completed.');
+        }
+
+        $request->validate([
+            'target_status' => 'required|in:Review,Upload',
+            'note'          => 'required|string|min:10',
+        ], [
+            'target_status.required' => 'Pilih target status.',
+            'target_status.in'       => 'Target status tidak valid.',
+            'note.required'          => 'Catatan alasan wajib diisi.',
+            'note.min'               => 'Catatan alasan minimal 10 karakter.',
+        ]);
+
+        // Simpan catatan reopen
+        ProjectRevision::create([
+            'project_id' => $project->id,
+            'user_id'    => $user->id,
+            'type'       => 'reopen',
+            'note'       => $request->note,
+        ]);
+
+        $target = $request->target_status;
+
+        $updateData = [
+            'status'       => $target,
+            'completed_at' => null,
+        ];
+
+        // Kalau target Review → reset approval supaya bisa ACC ulang
+        if ($target === Project::STATUS_REVIEW) {
+            $updateData['approved_by_pembina_at'] = null;
+            $updateData['approved_by_ketua_at']   = null;
+        }
+
+        $project->update($updateData);
+
+        // Notif WA: Kepala Divisi + semua anggota project
+        $memberIds = $project->users()->pluck('users.id')->toArray();
+
+        $recipients = User::where(function ($q) use ($memberIds) {
+                $q->where('division_role', 'kepala_divisi')
+                  ->orWhereIn('id', $memberIds);
+            })
+            ->where('status', 'Aktif')
+            ->get();
+
+        $url = route('projects.show', $project->id);
+
+        $this->notifyUsers(
+            $recipients,
+            'project_reopened',
+            $project->id,
+            fn($notifier, $u) => "🔄 *Project Dibatalkan Complete*\n\n"
+                . "Assalamu'alaikum, {$u->name} 👋\n\n"
+                . "Project ini dibuka kembali dan dikembalikan ke tahap *{$target}*:\n\n"
+                . "📌 *{$project->name}*\n\n"
+                . "📝 *Catatan:*\n{$request->note}\n\n"
+                . "Mohon ditindaklanjuti sesuai tahap saat ini.\n\n"
+                . "🔗 *Buka Project*\n{$url}\n\n"
+                . "*— Project Media*"
+        );
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', "Project dikembalikan ke tahap {$target}.");
     }
 
     // ============================================================

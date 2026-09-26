@@ -21,6 +21,23 @@ class ContentController extends Controller
     }
 
     // ============================================================
+    // HELPER: AKSES EDIT/DELETE KONTEN
+    // ============================================================
+
+    private function canEditOrDeleteContent(User $user): bool
+    {
+        if ($user->isPembina() || $user->isKetuaMedia()) {
+            return true;
+        }
+
+        if ($user->isKepalaDivisi() && str_contains(strtolower($user->division ?? ''), 'broadcast')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // ============================================================
     // HELPER: FILTER PROJECT SESUAI DIVISI USER
     // ============================================================
 
@@ -65,12 +82,6 @@ class ContentController extends Controller
         return $project->users()->where('users.division', $division)->exists();
     }
 
-    /**
-     * ⚡ HELPER: URL redirect setelah upload
-     * - Manager → /contents
-     * - Kepala Divisi / Anggota → /division/{divisinya}
-     * - Broadcast (divisi) → /contents (karena Broadcast punya akses)
-     */
     private function getRedirectAfterActivity(User $user)
     {
         if ($user->isManager()) {
@@ -187,11 +198,17 @@ class ContentController extends Controller
     }
 
     // ============================================================
-    // EDIT / UPDATE / DESTROY
+    // EDIT / UPDATE / DESTROY — + Guard
     // ============================================================
 
     public function edit($id)
     {
+        $user = Auth::user();
+
+        if (!$this->canEditOrDeleteContent($user)) {
+            abort(403, 'Anda tidak berhak mengedit konten.');
+        }
+
         $content = Content::findOrFail($id);
 
         return view('contents.edit', [
@@ -203,11 +220,17 @@ class ContentController extends Controller
 
     public function update(Request $request, $id)
     {
+        $user = Auth::user();
+
+        if (!$this->canEditOrDeleteContent($user)) {
+            abort(403, 'Anda tidak berhak mengedit konten.');
+        }
+
         $request->validate([
             'project_id' => 'required|exists:projects,id',
             'title'      => 'required|string|max:255',
-            'type'       => 'required|string',
-            'platform'   => 'required|array|min:1',
+            'type'       => 'nullable|string',
+            'platform'   => 'nullable|array',
             'platform.*' => 'string',
             'file_url'   => 'nullable|string',
             'caption'    => 'nullable|string',
@@ -218,8 +241,8 @@ class ContentController extends Controller
         $content->update([
             'project_id' => $request->project_id,
             'title'      => $request->title,
-            'type'       => $request->type,
-            'platform'   => $request->platform,
+            'type'       => $request->type ?? $content->type,
+            'platform'   => $request->platform ?? $content->platform,
             'file_url'   => $request->file_url,
             'caption'    => $request->caption,
         ]);
@@ -230,6 +253,12 @@ class ContentController extends Controller
 
     public function destroy($id)
     {
+        $user = Auth::user();
+
+        if (!$this->canEditOrDeleteContent($user)) {
+            abort(403, 'Anda tidak berhak menghapus konten.');
+        }
+
         $content = Content::findOrFail($id);
         $content->delete();
 
@@ -356,7 +385,6 @@ class ContentController extends Controller
             }
         }
 
-        // ⚡ FIX: Redirect dinamis
         return redirect()
             ->to($this->getRedirectAfterActivity($user))
             ->with('success', "Raw berhasil diupload! Notifikasi terkirim ke Divisi {$request->target_division}.");
@@ -453,7 +481,6 @@ class ContentController extends Controller
             }
         }
 
-        // ⚡ FIX: Redirect dinamis
         return redirect()
             ->to($this->getRedirectAfterActivity($user))
             ->with('success', "{$totalCount} stok konten berhasil diupload! Menunggu Broadcast mengisi metadata.");
