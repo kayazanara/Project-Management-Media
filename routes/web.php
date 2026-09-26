@@ -147,9 +147,10 @@ Route::middleware(['auth'])->group(function () {
         ->name('contents.broadcastMetadata');
 
     // ==========================================
-    // STOCK MANAGEMENT — ⚡ FIX: tambah kepala_divisi
+    // STOCK MANAGEMENT — Rollback ke semula
+    // (Pembina + Broadcast + Manager) — Kepala Divisi TIDAK
     // ==========================================
-    Route::middleware(['divisi.access:pembina|broadcast|manager|kepala_divisi'])->group(function () {
+    Route::middleware(['divisi.access:pembina|broadcast|manager'])->group(function () {
         Route::resource('contents', ContentController::class)->except(['show']);
         Route::patch('/contents/{id}/status', [ContentController::class, 'updateStatus'])->name('contents.status');
     });

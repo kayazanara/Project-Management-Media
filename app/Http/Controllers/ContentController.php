@@ -28,17 +28,14 @@ class ContentController extends Controller
     {
         $user = Auth::user();
 
-        // Manager (Pembina / Ketua Media) → semua project aktif
         if ($user->isManager()) {
             return Project::where('status', '!=', Project::STATUS_COMPLETED)
                 ->orderBy('name')
                 ->get();
         }
 
-        // Selain manager → hanya project yang melibatkan divisi user
         $division = trim($user->division ?? '');
         if (empty($division)) {
-            // Fallback: user tanpa divisi → tampil semua biar tidak stuck
             return Project::where('status', '!=', Project::STATUS_COMPLETED)
                 ->orderBy('name')
                 ->get();
@@ -69,9 +66,10 @@ class ContentController extends Controller
     }
 
     /**
-     * ⚡ HELPER: Tentukan URL redirect setelah upload activity
-     * Manager → /contents (Stock Management)
-     * Kepala Divisi → /division/{divisi sendiri}
+     * ⚡ HELPER: URL redirect setelah upload
+     * - Manager → /contents
+     * - Kepala Divisi / Anggota → /division/{divisinya}
+     * - Broadcast (divisi) → /contents (karena Broadcast punya akses)
      */
     private function getRedirectAfterActivity(User $user)
     {
@@ -79,17 +77,27 @@ class ContentController extends Controller
             return route('contents.index');
         }
 
-        $divisionMap = [
-            'Lapangan'    => 'Tim Lapangan',
-            'Editing'     => 'Tim Editing',
-            'Broadcast'   => 'Tim Broadcast',
-            'AI Research' => 'Tim AI Research',
+        $divName = strtolower(trim($user->division ?? ''));
+
+        if (str_contains($divName, 'broadcast')) {
+            return route('contents.index');
+        }
+
+        $map = [
+            'lapangan'    => 'Tim Lapangan',
+            'editing'     => 'Tim Editing',
+            'broadcast'   => 'Tim Broadcast',
+            'ai research' => 'Tim AI Research',
+            'research'    => 'Tim AI Research',
         ];
 
-        $divName = $user->division ?? '';
-        $divisionRouteName = $divisionMap[$divName] ?? 'Tim Lapangan';
+        foreach ($map as $keyword => $routeName) {
+            if (str_contains($divName, $keyword)) {
+                return route('division.show', $routeName);
+            }
+        }
 
-        return route('division.show', $divisionRouteName);
+        return route('dashboard');
     }
 
     // ============================================================
@@ -348,7 +356,9 @@ class ContentController extends Controller
             }
         }
 
-        return redirect()->route('contents.index')
+        // ⚡ FIX: Redirect dinamis
+        return redirect()
+            ->to($this->getRedirectAfterActivity($user))
             ->with('success', "Raw berhasil diupload! Notifikasi terkirim ke Divisi {$request->target_division}.");
     }
 
@@ -392,10 +402,10 @@ class ContentController extends Controller
                     'content_code' => $contentCode,
                     'project_id'   => $project->id,
                     'title'        => $item['title'],
-                    'type'         => null,       // Diisi Broadcast saat metadata
+                    'type'         => null,
                     'platform'     => [],
                     'file_url'     => $item['file_url'],
-                    'caption'      => null,       // Diisi Broadcast saat metadata
+                    'caption'      => null,
                     'upload_type'  => 'content_stock',
                     'status'       => 'Ready',
                 ]);
@@ -410,7 +420,6 @@ class ContentController extends Controller
             return back()->with('error', 'Gagal upload: ' . $e->getMessage())->withInput();
         }
 
-        // Notifikasi WA ke Broadcast (setelah commit)
         $broadcastUsers = User::where('division', 'like', '%broadcast%')
             ->where('status', 'Aktif')
             ->whereNotNull('phone')
@@ -444,12 +453,14 @@ class ContentController extends Controller
             }
         }
 
-        return redirect()->route('contents.index')
+        // ⚡ FIX: Redirect dinamis
+        return redirect()
+            ->to($this->getRedirectAfterActivity($user))
             ->with('success', "{$totalCount} stok konten berhasil diupload! Menunggu Broadcast mengisi metadata.");
     }
 
     // ============================================================
-    // UPLOAD ACTIVITY — ⚡ FIX: Redirect dinamis
+    // UPLOAD ACTIVITY
     // ============================================================
 
     public function uploadActivity(Request $request)
@@ -491,7 +502,6 @@ class ContentController extends Controller
             'uploaded_at'  => now(),
         ]);
 
-        // ⚡ FIX: Redirect dinamis (Kepala Divisi → halaman divisinya sendiri)
         return redirect()
             ->to($this->getRedirectAfterActivity($user))
             ->with('success', 'Activity berhasil diupload & ditandai Complete!');
@@ -522,7 +532,7 @@ class ContentController extends Controller
         $content->update([
             'category'            => $request->category,
             'content_type'        => $request->content_type,
-            'type'                => $request->content_type,   // sinkron dengan kolom `type`
+            'type'                => $request->content_type,
             'platform'            => $request->platform,
             'caption'             => $request->caption,
             'broadcast_filled_at' => now(),
