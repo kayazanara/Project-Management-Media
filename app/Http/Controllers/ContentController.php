@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\WhatsappNotifier;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ContentController extends Controller
@@ -17,6 +18,54 @@ class ContentController extends Controller
     public function __construct(WhatsappNotifier $notifier)
     {
         $this->notifier = $notifier;
+    }
+
+    // ============================================================
+    // HELPER: FILTER PROJECT SESUAI DIVISI USER
+    // ============================================================
+
+    private function getProjectsForUpload()
+    {
+        $user = Auth::user();
+
+        // Manager (Pembina / Ketua Media) → semua project aktif
+        if ($user->isManager()) {
+            return Project::where('status', '!=', Project::STATUS_COMPLETED)
+                ->orderBy('name')
+                ->get();
+        }
+
+        // Selain manager → hanya project yang melibatkan divisi user
+        $division = trim($user->division ?? '');
+        if (empty($division)) {
+            // Fallback: user tanpa divisi → tampil semua biar tidak stuck
+            return Project::where('status', '!=', Project::STATUS_COMPLETED)
+                ->orderBy('name')
+                ->get();
+        }
+
+        $divisionUserIds = User::where('division', $division)->pluck('id');
+
+        return Project::whereHas('users', function ($q) use ($divisionUserIds) {
+                $q->whereIn('users.id', $divisionUserIds);
+            })
+            ->where('status', '!=', Project::STATUS_COMPLETED)
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function canUserUploadToProject(User $user, Project $project): bool
+    {
+        if ($user->isManager()) {
+            return true;
+        }
+
+        $division = trim($user->division ?? '');
+        if (empty($division)) {
+            return false;
+        }
+
+        return $project->users()->where('users.division', $division)->exists();
     }
 
     // ============================================================
@@ -63,7 +112,7 @@ class ContentController extends Controller
     }
 
     // ============================================================
-    // CREATE / STORE
+    // CREATE / STORE (Legacy)
     // ============================================================
 
     public function create()
@@ -182,46 +231,40 @@ class ContentController extends Controller
     }
 
     // ============================================================
-    // UPLOAD 3 JENIS — FORM
+    // FORM UPLOAD 3 JENIS
     // ============================================================
 
     public function formRaw(Request $request)
     {
         return view('contents.upload-raw', [
             'title'            => 'Upload Bahan Mentah (Raw)',
-            'projects'         => Project::orderBy('name')->get(),
+            'projects'         => $this->getProjectsForUpload(),
             'defaultProjectId' => $request->input('project_id'),
         ]);
     }
 
-    // ⚡ FIX: terima project_id dari query string
     public function formStock(Request $request)
     {
         return view('contents.upload-stock', [
             'title'            => 'Upload Content Stock',
-            'projects'         => Project::orderBy('name')->get(),
+            'projects'         => $this->getProjectsForUpload(),
             'defaultProjectId' => $request->input('project_id'),
         ]);
     }
 
-    // ⚡ FIX: terima project_id dari query string
     public function formActivity(Request $request)
     {
         return view('contents.upload-activity', [
             'title'            => 'Upload Activity',
-            'projects'         => Project::orderBy('name')->get(),
+            'projects'         => $this->getProjectsForUpload(),
             'defaultProjectId' => $request->input('project_id'),
         ]);
     }
 
     // ============================================================
-    // UPLOAD 3 JENIS — STORE
+    // UPLOAD RAW
     // ============================================================
 
-    /**
-     * Upload Raw.
-     * platform diisi [] supaya lolos NOT NULL constraint.
-     */
     public function uploadRaw(Request $request)
     {
         $user = Auth::user();
@@ -236,9 +279,11 @@ class ContentController extends Controller
 
         $project = Project::findOrFail($request->project_id);
         $isInvolved = $project->users()->where('users.id', $user->id)->exists();
+        $sameDivision = !empty($user->division)
+            && $project->users()->where('users.division', $user->division)->exists();
 
-        if (!$isInvolved && !$user->isManager()) {
-            return back()->with('error', 'Anda tidak terlibat dalam project ini.');
+        if (!$isInvolved && !$sameDivision && !$user->isManager()) {
+            return back()->with('error', 'Anda tidak berhak upload ke project ini.');
         }
 
         $contentCode = $this->generateContentCode('RAW');
@@ -283,55 +328,91 @@ class ContentController extends Controller
             ->with('success', "Raw berhasil diupload! Notifikasi terkirim ke Divisi {$request->target_division}.");
     }
 
-    /**
-     * Upload Content Stock.
-     */
+    // ============================================================
+    // UPLOAD STOCK — ⚡ MULTI-ROW
+    // ============================================================
+
     public function uploadStock(Request $request)
     {
         $user = Auth::user();
 
         $request->validate([
-            'project_id'      => 'required|exists:projects,id',
-            'title'           => 'required|string|max:255',
-            'category_prefix' => 'required|string|in:DAK,DOK,MEM,PSB',
-            'type'            => 'required|string',
-            'platform'        => 'required|array|min:1',
-            'platform.*'      => 'string',
-            'file_url'        => 'nullable|string',
-            'caption'         => 'nullable|string',
+            'project_id'        => 'required|exists:projects,id',
+            'items'             => 'required|array|min:1',
+            'items.*.title'     => 'required|string|max:255',
+            'items.*.file_url'  => 'required|string|max:500',
+            'items.*.prefix'    => 'required|string|in:DAK,DOK,MEM,PSB',
+        ], [
+            'items.required'            => 'Minimal 1 konten harus diisi.',
+            'items.min'                 => 'Minimal 1 konten harus diisi.',
+            'items.*.title.required'    => 'Judul konten wajib diisi.',
+            'items.*.file_url.required' => 'Link file wajib diisi.',
+            'items.*.prefix.required'   => 'Prefix kode wajib dipilih.',
+            'items.*.prefix.in'         => 'Prefix kode tidak valid.',
         ]);
 
-        $contentCode = $this->generateContentCode($request->category_prefix);
+        $project = Project::findOrFail($request->project_id);
 
-        $content = Content::create([
-            'content_code' => $contentCode,
-            'project_id'   => $request->project_id,
-            'title'        => $request->title,
-            'type'         => $request->type,
-            'platform'     => $request->platform,
-            'file_url'     => $request->file_url,
-            'caption'      => $request->caption,
-            'upload_type'  => 'content_stock',
-            'status'       => 'Ready',
-        ]);
+        if (!$this->canUserUploadToProject($user, $project)) {
+            return back()->with('error', 'Anda tidak berhak upload ke project ini.');
+        }
 
-        $project = Project::find($request->project_id);
+        DB::beginTransaction();
+        try {
+            $createdContents = [];
 
+            foreach ($request->items as $item) {
+                $contentCode = $this->generateContentCode($item['prefix']);
+
+                $content = Content::create([
+                    'content_code' => $contentCode,
+                    'project_id'   => $project->id,
+                    'title'        => $item['title'],
+                    'type'         => null,       // Diisi Broadcast saat metadata
+                    'platform'     => [],
+                    'file_url'     => $item['file_url'],
+                    'caption'      => null,       // Diisi Broadcast saat metadata
+                    'upload_type'  => 'content_stock',
+                    'status'       => 'Ready',
+                ]);
+
+                $createdContents[] = $content;
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('[Upload Stock] Rollback: ' . $e->getMessage());
+            return back()->with('error', 'Gagal upload: ' . $e->getMessage())->withInput();
+        }
+
+        // Notifikasi WA ke Broadcast (setelah commit)
         $broadcastUsers = User::where('division', 'like', '%broadcast%')
             ->where('status', 'Aktif')
             ->whereNotNull('phone')
             ->where('phone', '!=', '')
             ->get();
 
+        $totalCount = count($createdContents);
+        $firstContent = $createdContents[0];
+
         foreach ($broadcastUsers as $u) {
             if ($u->id === $user->id) continue;
             try {
+                $codeLabel = $totalCount > 1
+                    ? $firstContent->content_code . ' (+' . ($totalCount - 1) . ' lainnya)'
+                    : $firstContent->content_code;
+
+                $titleLabel = $totalCount > 1
+                    ? $firstContent->title . ' dll'
+                    : $firstContent->title;
+
                 $msg = $this->notifier->stockUploadedTemplate(
                     $u->name,
-                    $content->content_code,
-                    $content->title,
+                    $codeLabel,
+                    $titleLabel,
                     $project->name ?? '-',
-                    $content->id
+                    $firstContent->id
                 );
                 $this->notifier->sendAndLog($u, $project->id, 'stock_uploaded', $msg);
             } catch (\Throwable $e) {
@@ -340,13 +421,13 @@ class ContentController extends Controller
         }
 
         return redirect()->route('contents.index')
-            ->with('success', 'Stok konten berhasil diupload! Menunggu Broadcast mengisi metadata.');
+            ->with('success', "{$totalCount} stok konten berhasil diupload! Menunggu Broadcast mengisi metadata.");
     }
 
-    /**
-     * Upload Activity.
-     * platform diisi [] supaya lolos NOT NULL constraint.
-     */
+    // ============================================================
+    // UPLOAD ACTIVITY
+    // ============================================================
+
     public function uploadActivity(Request $request)
     {
         $user = Auth::user();
@@ -365,11 +446,17 @@ class ContentController extends Controller
             'caption.min'      => 'Deskripsi activity minimal 10 karakter.',
         ]);
 
+        $project = Project::findOrFail($request->project_id);
+
+        if (!$this->canUserUploadToProject($user, $project)) {
+            return back()->with('error', 'Anda tidak berhak upload ke project ini.');
+        }
+
         $contentCode = $this->generateContentCode('ACT');
 
         Content::create([
             'content_code' => $contentCode,
-            'project_id'   => $request->project_id,
+            'project_id'   => $project->id,
             'title'        => $request->title,
             'type'         => 'Activity',
             'platform'     => [],
@@ -384,9 +471,10 @@ class ContentController extends Controller
             ->with('success', 'Activity berhasil diupload & ditandai Complete!');
     }
 
-    /**
-     * Isi Metadata Konten oleh Broadcast.
-     */
+    // ============================================================
+    // METADATA BROADCAST
+    // ============================================================
+
     public function fillBroadcastMetadata(Request $request, $id)
     {
         $user = Auth::user();
@@ -408,6 +496,7 @@ class ContentController extends Controller
         $content->update([
             'category'            => $request->category,
             'content_type'        => $request->content_type,
+            'type'                => $request->content_type,   // sinkron dengan kolom `type`
             'platform'            => $request->platform,
             'caption'             => $request->caption,
             'broadcast_filled_at' => now(),
@@ -419,9 +508,6 @@ class ContentController extends Controller
             ->with('success', 'Metadata berhasil diisi & konten ditandai Complete!');
     }
 
-    /**
-     * Form isi metadata.
-     */
     public function formBroadcastMetadata($id)
     {
         $content = Content::findOrFail($id);
