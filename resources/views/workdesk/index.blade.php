@@ -255,9 +255,9 @@
                                         </td>
                                         <td class="text-center">
                                             @if($div['trend'] > 0)
-                                                <span class="text-success small">â†—ï¸ +{{ $div['trend'] }}%</span>
+                                                <span class="text-success small">â†—ï¸ +{{ $div['trend'] }}%</span>
                                             @elseif($div['trend'] < 0)
-                                                <span class="text-danger small">â†˜ï¸ {{ $div['trend'] }}%</span>
+                                                <span class="text-danger small">â†˜ï¸ {{ $div['trend'] }}%</span>
                                             @else
                                                 <span class="text-muted small">â†’ 0%</span>
                                             @endif
@@ -413,7 +413,7 @@
             <div class="card shadow">
                 <div class="card-header py-2 bg-gradient-warning text-white">
                     <h6 class="m-0 font-weight-bold small">
-                        <i class="fas fa-exclamation-circle mr-1"></i> Perlu Perhatian (Poin < 3)
+                        <i class="fas fa-exclamation-circle mr-1"></i> Perlu Perhatian (Poin &lt; 3)
                     </h6>
                 </div>
                 <div class="card-body p-2">
@@ -468,7 +468,7 @@
 
                     @if($lastMeeting)
                         <hr>
-                        <h6 class="font-weight-bold small">ðŸ“ Notulen Terakhir</h6>
+                        <h6 class="font-weight-bold small">ðŸ“ Notulen Terakhir</h6>
                         <div class="p-2 rounded bg-light">
                             <div class="font-weight-bold">{{ $lastMeeting['title'] }}</div>
                             <div class="small text-muted">{{ $lastMeeting['date'] }}</div>
@@ -520,8 +520,30 @@
                             </div>
                             <div class="col-6 mb-2">
                                 <strong>WAHA:</strong>
-                                <span class="badge badge-{{ $systemHealth['waha_status'] === 'connected' ? 'success' : 'danger' }}">
-                                    {{ $systemHealth['waha_status'] }}
+                                @php
+                                    $wahaColor = match($systemHealth['waha_status']) {
+                                        'connected'    => 'success',
+                                        'need_qr'      => 'warning',
+                                        'starting'     => 'info',
+                                        'stopped'      => 'secondary',
+                                        'unauthorized' => 'danger',
+                                        'no_session'   => 'warning',
+                                        'offline'      => 'dark',
+                                        default        => 'danger',
+                                    };
+                                    $wahaLabel = match($systemHealth['waha_status']) {
+                                        'connected'    => '✓ Connected',
+                                        'need_qr'      => '⚠ Scan QR',
+                                        'starting'     => '⏳ Starting',
+                                        'stopped'      => '⏹ Stopped',
+                                        'unauthorized' => '✗ API Key',
+                                        'no_session'   => '⚠ No Session',
+                                        'offline'      => '✗ Offline',
+                                        default        => '? Unknown',
+                                    };
+                                @endphp
+                                <span class="badge badge-{{ $wahaColor }}" title="{{ $systemHealth['waha_status'] }}">
+                                    {{ $wahaLabel }}
                                 </span>
                             </div>
                         </div>

@@ -378,7 +378,7 @@ class WorkdeskController extends Controller
     }
 
     // ============================================================
-    // PERFORMANCE (Division)
+    // PERFORMANCE
     // ============================================================
 
     private function buildDivisionPerformance(): array
@@ -536,7 +536,7 @@ class WorkdeskController extends Controller
     }
 
     // ============================================================
-    // TOP / BOTTOM MEMBERS — ⚡ PAKAI SISTEM POIN
+    // TOP / BOTTOM MEMBERS
     // ============================================================
 
     private function buildTopMembers(): array
@@ -575,7 +575,6 @@ class WorkdeskController extends Controller
 
         $pointsData = $this->calculatePointsInRange($start, $end);
 
-        // Ambil semua user aktif, hitung poin (default 0), filter yang poin < 3
         return User::where('status', 'Aktif')
             ->get()
             ->map(function ($u) use ($pointsData) {
@@ -690,6 +689,7 @@ class WorkdeskController extends Controller
 
     // ============================================================
     // SYSTEM HEALTH
+    // ⚡ FIX: WAHA check pakai X-Api-Key header + deteksi status session
     // ============================================================
 
     private function buildSystemHealth(): array
@@ -701,11 +701,50 @@ class WorkdeskController extends Controller
         $queueCount = \DB::table('jobs')->count();
         $failedJobs = \DB::table('failed_jobs')->count();
 
-        $wahaUrl = config('services.waha.url');
-        $wahaStatus = 'unknown';
+        // ⚡ Cek WAHA dengan API key + timeout pendek
+        $wahaUrl = rtrim(config('services.waha.url'), '/');
+        $wahaKey = config('services.waha.api_key');
+        $wahaSession = config('services.waha.session', 'default');
+        $wahaStatus = 'offline';
+
         try {
-            $response = \Http::timeout(3)->get("{$wahaUrl}/api/sessions");
-            $wahaStatus = $response->successful() ? 'connected' : 'error';
+            $response = \Http::timeout(3)
+                ->withHeaders(['X-Api-Key' => $wahaKey])
+                ->get("{$wahaUrl}/api/sessions");
+
+            if ($response->successful()) {
+                $sessions = $response->json();
+
+                // Cari session yang match
+                $matchedSession = null;
+                if (is_array($sessions)) {
+                    foreach ($sessions as $s) {
+                        if (($s['name'] ?? null) === $wahaSession) {
+                            $matchedSession = $s;
+                            break;
+                        }
+                    }
+                }
+
+                if (!$matchedSession) {
+                    $wahaStatus = 'no_session';
+                } else {
+                    $sessionStatus = strtoupper($matchedSession['status'] ?? 'UNKNOWN');
+                    $wahaStatus = match ($sessionStatus) {
+                        'WORKING'       => 'connected',
+                        'SCAN_QR_CODE'  => 'need_qr',
+                        'STARTING'      => 'starting',
+                        'STOPPED', 'FAILED' => 'stopped',
+                        default         => 'error',
+                    };
+                }
+            } else {
+                // HTTP error (401, 500, dll)
+                $wahaStatus = match ($response->status()) {
+                    401, 403 => 'unauthorized',
+                    default  => 'error',
+                };
+            }
         } catch (\Throwable $e) {
             $wahaStatus = 'offline';
         }
