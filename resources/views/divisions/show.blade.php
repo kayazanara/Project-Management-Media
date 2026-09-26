@@ -456,9 +456,9 @@
                             <td>
                                 @if($compProj->completed_at && $compProj->start_date)
                                     @php
-                                        $start = \Carbon\Carbon::parse($compProj->start_date);
-                                        $end = \Carbon\Carbon::parse($compProj->completed_at);
-                                        $days = $start->diffInDays($end);
+                                        $start = \Carbon\Carbon::parse($compProj->start_date)->startOfDay();
+                                        $end = \Carbon\Carbon::parse($compProj->completed_at)->startOfDay();
+                                        $days = (int) $start->diffInDays($end);
                                     @endphp
                                     <span class="badge badge-info">
                                         <i class="fas fa-clock mr-1"></i>{{ $days }} hari

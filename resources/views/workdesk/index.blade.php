@@ -13,7 +13,7 @@
                 <i class="fas fa-briefcase mr-2"></i> Workdesk
             </h1>
             <small class="text-muted">
-                Selamat datang, <strong>{{ $user->name }}</strong> â€”
+                Selamat datang, <strong>{{ $user->name }}</strong> &mdash;
                 {{ now()->translatedFormat('l, d F Y') }}
             </small>
         </div>
@@ -61,7 +61,7 @@
                         <div class="text-center py-5">
                             <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
                             <h5 class="text-muted">Tidak ada aksi yang perlu dilakukan</h5>
-                            <p class="text-muted small mb-0">Semua project aman terkendali ðŸŽ‰</p>
+                            <p class="text-muted small mb-0">Semua project aman terkendali</p>
                         </div>
                     @endforelse
                 </div>
@@ -86,7 +86,7 @@
                                 <div class="font-weight-bold small text-dark">{{ $alert['title'] }}</div>
                                 <div class="text-muted" style="font-size: 11.5px;">{{ $alert['message'] }}</div>
                                 <a href="{{ $alert['url'] }}" class="small text-primary">
-                                    {{ $alert['cta'] }} â†’
+                                    {{ $alert['cta'] }} &rarr;
                                 </a>
                             </div>
                         </div>
@@ -113,8 +113,8 @@
                                 {{ $stats['active_projects'] }} / {{ $stats['total_projects'] }}
                             </div>
                             <small class="text-muted">
-                                âœ… {{ $stats['completed_projects'] }} selesai |
-                                ðŸš¨ {{ $stats['overdue_projects'] }} overdue
+                                <i class="fas fa-check-circle text-success mr-1"></i>{{ $stats['completed_projects'] }} selesai |
+                                <i class="fas fa-exclamation-triangle text-danger mr-1"></i>{{ $stats['overdue_projects'] }} overdue
                             </small>
                         </div>
                         <div class="col-auto"><i class="fas fa-project-diagram fa-2x text-gray-300"></i></div>
@@ -255,11 +255,11 @@
                                         </td>
                                         <td class="text-center">
                                             @if($div['trend'] > 0)
-                                                <span class="text-success small">â†—ï¸ +{{ $div['trend'] }}%</span>
+                                                <span class="text-success small"><i class="fas fa-arrow-up mr-1"></i>+{{ $div['trend'] }}%</span>
                                             @elseif($div['trend'] < 0)
-                                                <span class="text-danger small">â†˜ï¸ {{ $div['trend'] }}%</span>
+                                                <span class="text-danger small"><i class="fas fa-arrow-down mr-1"></i>{{ $div['trend'] }}%</span>
                                             @else
-                                                <span class="text-muted small">â†’ 0%</span>
+                                                <span class="text-muted small"><i class="fas fa-minus mr-1"></i>0%</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -297,7 +297,7 @@
                                         {{ $p['name'] }}
                                     </a>
                                     <div class="small text-muted">
-                                        {{ $p['status'] }} â€¢ Deadline: {{ $p['deadline'] }}
+                                        {{ $p['status'] }} &bull; Deadline: {{ $p['deadline'] }}
                                     </div>
                                 </div>
                                 <div class="text-right">
@@ -326,7 +326,7 @@
                                             {{ $p['name'] }}
                                         </a>
                                         <div class="small text-muted">
-                                            {{ $p['status'] }} â€¢ Deadline: {{ $p['deadline'] }}
+                                            {{ $p['status'] }} &bull; Deadline: {{ $p['deadline'] }}
                                         </div>
                                     </div>
                                     <div class="text-right">
@@ -354,7 +354,7 @@
                                             {{ $p['name'] }}
                                         </a>
                                         <div class="small text-muted">
-                                            {{ $p['status'] }} â€¢ Deadline: {{ $p['deadline'] }}
+                                            {{ $p['status'] }} &bull; Deadline: {{ $p['deadline'] }}
                                         </div>
                                     </div>
                                     <div class="text-right">
@@ -422,7 +422,7 @@
                             <div style="min-width: 0;">
                                 <div class="font-weight-bold small text-truncate">{{ $m['name'] }}</div>
                                 <div class="text-muted" style="font-size: 10px;">
-                                    {{ $m['division'] }} â€¢ Login: {{ $m['last_login'] }}
+                                    {{ $m['division'] }} &bull; Login: {{ $m['last_login'] }}
                                 </div>
                             </div>
                             <span class="badge badge-{{ $m['points'] == 0 ? 'danger' : 'warning' }}">
@@ -430,7 +430,7 @@
                             </span>
                         </div>
                     @empty
-                        <p class="text-muted small text-center mb-0">Semua anggota produktif ðŸ’ª</p>
+                        <p class="text-muted small text-center mb-0">Semua anggota produktif</p>
                     @endforelse
                 </div>
             </div>
@@ -451,12 +451,12 @@
                         <div class="p-2 mb-2 rounded bg-light border-left border-info" style="border-left-width: 3px !important;">
                             <div class="font-weight-bold">{{ $m['title'] }}</div>
                             <div class="small text-muted">
-                                <i class="fas fa-calendar mr-1"></i>{{ $m['date'] }} â€¢
-                                <i class="fas fa-clock ml-1 mr-1"></i>{{ $m['time'] }} â€¢
+                                <i class="fas fa-calendar mr-1"></i>{{ $m['date'] }} &bull;
+                                <i class="fas fa-clock ml-1 mr-1"></i>{{ $m['time'] }} &bull;
                                 <i class="fas fa-map-marker-alt ml-1 mr-1"></i>{{ $m['location'] }}
                             </div>
                             <a href="{{ route('meetings.show', $m['id']) }}" class="btn btn-sm btn-outline-info mt-1">
-                                Lihat Detail â†’
+                                Lihat Detail &rarr;
                             </a>
                         </div>
                     @empty
@@ -468,7 +468,7 @@
 
                     @if($lastMeeting)
                         <hr>
-                        <h6 class="font-weight-bold small">ðŸ“ Notulen Terakhir</h6>
+                        <h6 class="font-weight-bold small"><i class="fas fa-file-alt mr-1"></i>Notulen Terakhir</h6>
                         <div class="p-2 rounded bg-light">
                             <div class="font-weight-bold">{{ $lastMeeting['title'] }}</div>
                             <div class="small text-muted">{{ $lastMeeting['date'] }}</div>
@@ -477,7 +477,7 @@
                                 <span class="badge badge-success">{{ $lastMeeting['completed_actions'] }}/{{ $lastMeeting['total_actions'] }} action items</span>
                             </div>
                             <a href="{{ route('meetings.show', $lastMeeting['id']) }}" class="btn btn-sm btn-outline-primary mt-2">
-                                Lihat Lengkap â†’
+                                Lihat Lengkap &rarr;
                             </a>
                         </div>
                     @endif
@@ -532,14 +532,14 @@
                                         default        => 'danger',
                                     };
                                     $wahaLabel = match($systemHealth['waha_status']) {
-                                        'connected'    => '✓ Connected',
-                                        'need_qr'      => '⚠ Scan QR',
-                                        'starting'     => '⏳ Starting',
-                                        'stopped'      => '⏹ Stopped',
-                                        'unauthorized' => '✗ API Key',
-                                        'no_session'   => '⚠ No Session',
-                                        'offline'      => '✗ Offline',
-                                        default        => '? Unknown',
+                                        'connected'    => 'Connected',
+                                        'need_qr'      => 'Scan QR',
+                                        'starting'     => 'Starting',
+                                        'stopped'      => 'Stopped',
+                                        'unauthorized' => 'API Key Error',
+                                        'no_session'   => 'No Session',
+                                        'offline'      => 'Offline',
+                                        default        => 'Unknown',
                                     };
                                 @endphp
                                 <span class="badge badge-{{ $wahaColor }}" title="{{ $systemHealth['waha_status'] }}">
