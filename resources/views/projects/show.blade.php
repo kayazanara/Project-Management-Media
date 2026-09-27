@@ -111,7 +111,7 @@
             </div>
             <div class="card-body">
 
-                {{-- 1. PLANNING --}}
+                {{-- 1. PLANNING — ⚡ FIX: Pembina juga bisa submit (antisipasi Ketua Media absent) --}}
                 @if($project->status === 'Planning')
                     <div class="text-center py-3">
                         <i class="fas fa-clipboard-list fa-3x text-secondary mb-3"></i>
@@ -119,17 +119,33 @@
                         <p class="text-muted mb-3">
                             Project baru dibuat. Silakan susun task yang perlu dikerjakan.
                         </p>
-                        @if($isKetuaMedia)
-                            <form action="{{ route('projects.submitTaskReview', $project->id) }}" method="POST" class="d-inline">
-                                @csrf
-                                @method('PATCH')
-                                <button type="submit" class="btn btn-primary"
-                                        onclick="return confirm('Ajukan task ke Pembina untuk scoring?')">
-                                    <i class="fas fa-paper-plane mr-1"></i> Ajukan ke Pembina ({{ $project->tasks->count() }} Task)
-                                </button>
-                            </form>
-                        @elseif($isPembina)
-                            <span class="badge badge-info">Menunggu Ketua Media menyusun task</span>
+
+                        @if($isKetuaMedia || $isPembina)
+                            @php $taskCount = $project->tasks->count(); @endphp
+
+                            @if($taskCount > 0)
+                                <form action="{{ route('projects.submitTaskReview', $project->id) }}" method="POST" class="d-inline">
+                                    @csrf
+                                    @method('PATCH')
+                    <               button type="submit" class="btn btn-primary"
+                                            onclick="return confirm('Ajukan task ke tahap Task Review?')">
+                                        <i class="fas fa-paper-plane mr-1"></i> Ajukan ke Task Review ({{ $taskCount }} Task)
+                                    </button>
+                                </form>
+                            @else
+                                <div class="alert alert-info small d-inline-block mb-0">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Susun minimal 1 task dulu sebelum bisa diajukan.
+                                </div>
+                            @endif
+
+                            @if($isPembina && !$isKetuaMedia)
+                                <p class="text-muted small mt-2 mb-0">
+                                    <i class="fas fa-user-shield mr-1"></i>
+                                    Anda login sebagai <strong>Pembina</strong>. Tombol ini untuk menggantikan Ketua Media
+                                    jika sedang berhalangan. Setelah submit, Anda bisa langsung lanjut ke tahap <strong>Scoring</strong>.
+                                </p>
+                            @endif
                         @endif
                     </div>
                 @endif

@@ -362,6 +362,8 @@ class ProjectController extends Controller
 
     // ============================================================
     // WORKFLOW: 1. SUBMIT TASK REVIEW
+    // ⚡ FIX: Pembina juga bisa (antisipasi Ketua Media absent)
+    // ⚡ FIX: Skip WA kalau yang submit adalah Pembina
     // ============================================================
 
     public function submitTaskReview($id)
@@ -369,8 +371,9 @@ class ProjectController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
-        if (!$user->isKetuaMedia()) {
-            return back()->with('error', 'Hanya Ketua Media yang bisa ajukan task review.');
+        // ⚡ FIX: Ketua Media ATAU Pembina bisa submit
+        if (!$user->isKetuaMedia() && !$user->isPembina()) {
+            return back()->with('error', 'Hanya Ketua Media atau Pembina Media yang bisa ajukan task review.');
         }
 
         if ($project->status !== Project::STATUS_PLANNING) {
@@ -379,29 +382,39 @@ class ProjectController extends Controller
 
         $taskCount = $project->tasks()->count();
         if ($taskCount === 0) {
-            return back()->with('error', 'Susun minimal 1 task sebelum ajukan ke Pembina.');
+            return back()->with('error', 'Susun minimal 1 task sebelum ajukan ke tahap Task Review.');
         }
 
         $project->update(['status' => Project::STATUS_TASK_REVIEW]);
 
-        $pembinaUsers = User::where('division_role', 'pembina')
-            ->where('status', 'Aktif')
-            ->get();
+        // ⚡ FIX: Skip WA kalau yang submit adalah Pembina sendiri
+        //    (notif hanya dikirim kalau Ketua Media yang submit)
+        if ($user->isKetuaMedia()) {
+            $pembinaUsers = User::where('division_role', 'pembina')
+                ->where('status', 'Aktif')
+                ->get();
 
-        $this->notifyUsers(
-            $pembinaUsers,
-            'task_review_submitted',
-            $project->id,
-            fn($notifier, $u) => $notifier->taskReviewSubmittedTemplate(
-                $u->name,
-                $project->name,
-                $taskCount,
-                $project->id
-            )
-        );
+            $this->notifyUsers(
+                $pembinaUsers,
+                'task_review_submitted',
+                $project->id,
+                fn($notifier, $u) => $notifier->taskReviewSubmittedTemplate(
+                    $u->name,
+                    $project->name,
+                    $taskCount,
+                    $project->id
+                )
+            );
+        }
 
-        return redirect()->route('projects.show', $id)
-            ->with('success', "Task berhasil diajukan ke Pembina Media ({$taskCount} task). Menunggu scoring.");
+        $successMsg = "Task berhasil diajukan ke tahap Task Review ({$taskCount} task).";
+        if ($user->isPembina()) {
+            $successMsg .= ' Silakan lanjut ke tahap Scoring.';
+        } else {
+            $successMsg .= ' Menunggu scoring dari Pembina.';
+        }
+
+        return redirect()->route('projects.show', $id)->with('success', $successMsg);
     }
 
     // ============================================================
@@ -766,7 +779,7 @@ class ProjectController extends Controller
     }
 
     // ============================================================
-    // WORKFLOW: 8. REOPEN (Batalkan Complete) — NEW
+    // WORKFLOW: 8. REOPEN (Batalkan Complete)
     // ============================================================
 
     public function reopen(Request $request, $id)
@@ -774,7 +787,6 @@ class ProjectController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
-        // Akses: Manager ATAU Kepala Divisi yang terlibat di project
         $isManager = $user->isManager();
         $isInvolvedKadiv = $user->isKepalaDivisi()
             && $project->users()->where('users.id', $user->id)->exists();
@@ -797,7 +809,6 @@ class ProjectController extends Controller
             'note.min'               => 'Catatan alasan minimal 10 karakter.',
         ]);
 
-        // Simpan catatan reopen
         ProjectRevision::create([
             'project_id' => $project->id,
             'user_id'    => $user->id,
@@ -812,7 +823,6 @@ class ProjectController extends Controller
             'completed_at' => null,
         ];
 
-        // Kalau target Review → reset approval supaya bisa ACC ulang
         if ($target === Project::STATUS_REVIEW) {
             $updateData['approved_by_pembina_at'] = null;
             $updateData['approved_by_ketua_at']   = null;
@@ -820,7 +830,6 @@ class ProjectController extends Controller
 
         $project->update($updateData);
 
-        // Notif WA: Kepala Divisi + semua anggota project
         $memberIds = $project->users()->pluck('users.id')->toArray();
 
         $recipients = User::where(function ($q) use ($memberIds) {
