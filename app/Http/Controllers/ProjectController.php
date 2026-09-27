@@ -57,6 +57,27 @@ class ProjectController extends Controller
         }
     }
 
+    /**
+     * ⚡ Ambil daftar penerima notifikasi untuk sebuah project.
+     *
+     * Aturan:
+     *  - Hanya anggota project (termasuk Kadiv yang terlibat).
+     *  - Skip Pembina & Ketua Media (mereka bukan target notif operasional).
+     *  - Skip user yang sedang melakukan aksi (opsional, agar tidak notif diri sendiri).
+     */
+    private function getProjectRecipients(Project $project, ?int $excludeUserId = null)
+    {
+        $query = $project->users()
+            ->where('users.status', 'Aktif')
+            ->whereNotIn('users.division_role', ['pembina', 'ketua_media']);
+
+        if ($excludeUserId) {
+            $query->where('users.id', '!=', $excludeUserId);
+        }
+
+        return $query->get();
+    }
+
     // ============================================================
     // INDEX
     // ============================================================
@@ -490,14 +511,8 @@ class ProjectController extends Controller
             'released_at' => now(),
         ]);
 
-        $memberIds = $project->users()->pluck('users.id')->toArray();
-
-        $recipients = User::where(function ($q) use ($memberIds) {
-                $q->whereIn('id', $memberIds)
-                  ->orWhere('division_role', 'kepala_divisi');
-            })
-            ->where('status', 'Aktif')
-            ->get();
+        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv)
+        $recipients = $this->getProjectRecipients($project, $user->id);
 
         $deadlineStr = $project->deadline
             ? $project->deadline->translatedFormat('d F Y')
@@ -621,14 +636,8 @@ class ProjectController extends Controller
             'approved_by_ketua_at' => null,
         ]);
 
-        $memberIds = $project->users()->pluck('users.id')->toArray();
-
-        $recipients = User::where(function ($q) use ($memberIds) {
-                $q->where('division_role', 'kepala_divisi')
-                  ->orWhereIn('id', $memberIds);
-            })
-            ->where('status', 'Aktif')
-            ->get();
+        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv)
+        $recipients = $this->getProjectRecipients($project, $user->id);
 
         $this->notifyUsers(
             $recipients,
@@ -741,12 +750,8 @@ class ProjectController extends Controller
             'is_overdue' => false,
         ]);
 
-        $recipients = User::where(function ($q) {
-                $q->where('division_role', 'kepala_divisi')
-                  ->orWhere('division_role', 'pembina');
-            })
-            ->where('status', 'Aktif')
-            ->get();
+        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv + semua Pembina)
+        $recipients = $this->getProjectRecipients($project, $user->id);
 
         $this->notifyUsers(
             $recipients,
@@ -830,14 +835,8 @@ class ProjectController extends Controller
 
         $project->update($updateData);
 
-        $memberIds = $project->users()->pluck('users.id')->toArray();
-
-        $recipients = User::where(function ($q) use ($memberIds) {
-                $q->where('division_role', 'kepala_divisi')
-                  ->orWhereIn('id', $memberIds);
-            })
-            ->where('status', 'Aktif')
-            ->get();
+        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv)
+        $recipients = $this->getProjectRecipients($project, $user->id);
 
         $url = route('projects.show', $project->id);
 
