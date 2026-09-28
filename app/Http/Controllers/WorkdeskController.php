@@ -107,7 +107,7 @@ class WorkdeskController extends Controller
     private function calculatePointsInRange(Carbon $start, Carbon $end): array
     {
         $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                $q->whereBetween('task_date', [$start, $end])
+                $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
                   ->orWhere(function ($q2) use ($start, $end) {
                       $q2->whereNull('task_date')
                          ->whereBetween('created_at', [$start, $end]);
@@ -417,7 +417,7 @@ class WorkdeskController extends Controller
 
             $totalTasks = ProjectTask::whereIn('assigned_to', $memberIds)
                 ->where(function ($q) use ($startOfWeek, $endOfWeek) {
-                    $q->whereBetween('task_date', [$startOfWeek, $endOfWeek])
+                    $q->whereBetween('task_date', [$startOfWeek->toDateString(), $endOfWeek->toDateString()])
                       ->orWhere(function ($q2) use ($startOfWeek, $endOfWeek) {
                           $q2->where('status', 'Completed')
                              ->whereBetween('completed_at', [$startOfWeek, $endOfWeek]);
@@ -438,7 +438,7 @@ class WorkdeskController extends Controller
                 ->count();
 
             $weightedTotal = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->whereBetween('task_date', [$startOfWeek, $endOfWeek])
+                ->whereBetween('task_date', [$startOfWeek->toDateString(), $endOfWeek->toDateString()])
                 ->sum('weight');
 
             $weightedDone = ProjectTask::whereIn('assigned_to', $memberIds)

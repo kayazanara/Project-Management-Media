@@ -66,7 +66,7 @@ class MonitoringController extends Controller
             $lateDaysSum = 0;
 
             $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                    $q->whereBetween('task_date', [$start, $end])
+                    $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
                       ->orWhere(function ($q2) use ($start, $end) {
                           $q2->whereNull('task_date')
                              ->whereBetween('created_at', [$start, $end]);
@@ -86,8 +86,13 @@ class MonitoringController extends Controller
                 if (empty($contributorIds)) continue;
 
                 if (in_array($u->id, $contributorIds)) {
-                    $points += ((float) $task->weight) / count($contributorIds);
                     $taskCount++;
+
+                    // ⚡ FIX: poin HANYA untuk task yang benar-benar SELESAI.
+                    // Sebelumnya poin diberikan begitu bobot diisi, walau task masih Pending.
+                    if ($task->status === 'Completed') {
+                        $points += ((float) $task->weight) / count($contributorIds);
+                    }
 
                     // ⚡ FIX: parse task_date jadi Carbon sebelum dibandingkan
                     if ($task->status === 'Completed' && $task->task_date && $task->completed_at) {
@@ -266,7 +271,7 @@ class MonitoringController extends Controller
             $end = $month->copy()->endOfMonth();
 
             $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                    $q->whereBetween('task_date', [$start, $end])
+                    $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
                       ->orWhere(function ($q2) use ($start, $end) {
                           $q2->whereNull('task_date')
                              ->whereBetween('created_at', [$start, $end]);
@@ -286,7 +291,8 @@ class MonitoringController extends Controller
                 }
                 if (empty($contributorIds)) continue;
 
-                if (in_array($u->id, $contributorIds)) {
+                // ⚡ FIX: poin HANYA untuk task yang benar-benar SELESAI
+                if (in_array($u->id, $contributorIds) && $task->status === 'Completed') {
                     $points += ((float) $task->weight) / count($contributorIds);
                 }
             }
@@ -312,7 +318,7 @@ class MonitoringController extends Controller
 
         foreach ($users as $user) {
             $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                    $q->whereBetween('task_date', [$start, $end])
+                    $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
                       ->orWhere(function ($q2) use ($start, $end) {
                           $q2->whereNull('task_date')
                              ->whereBetween('created_at', [$start, $end]);
@@ -338,9 +344,13 @@ class MonitoringController extends Controller
                 if (empty($contributorIds)) continue;
 
                 if (in_array($user->id, $contributorIds)) {
-                    $pointPerPerson = ((float) $task->weight) / count($contributorIds);
-                    $points += $pointPerPerson;
                     $taskCount++;
+
+                    // ⚡ FIX: poin HANYA untuk task yang benar-benar SELESAI
+                    // (sebelumnya poin diberikan begitu bobot diisi, walau task masih Pending)
+                    if ($task->status === 'Completed') {
+                        $points += ((float) $task->weight) / count($contributorIds);
+                    }
 
                     // ⚡ FIX: parse task_date
                     if ($task->status === 'Completed' && $task->task_date && $task->completed_at) {
@@ -411,7 +421,7 @@ class MonitoringController extends Controller
 
             foreach ($months as $m) {
                 $tasks = ProjectTask::where(function ($q) use ($m) {
-                        $q->whereBetween('task_date', [$m['start'], $m['end']])
+                        $q->whereBetween('task_date', [$m['start']->toDateString(), $m['end']->toDateString()])
                           ->orWhere(function ($q2) use ($m) {
                               $q2->whereNull('task_date')
                                  ->whereBetween('created_at', [$m['start'], $m['end']]);
@@ -431,7 +441,8 @@ class MonitoringController extends Controller
                     }
                     if (empty($contributorIds)) continue;
 
-                    if (in_array($user->id, $contributorIds)) {
+                    // ⚡ FIX: poin HANYA untuk task yang benar-benar SELESAI
+                    if (in_array($user->id, $contributorIds) && $task->status === 'Completed') {
                         $points += ((float) $task->weight) / count($contributorIds);
                     }
                 }
@@ -620,7 +631,7 @@ class MonitoringController extends Controller
 
         foreach ($activeUsers as $u) {
             $hasPoints = ProjectTask::where(function ($q) use ($start14, $end) {
-                    $q->whereBetween('task_date', [$start14, $end])
+                    $q->whereBetween('task_date', [$start14->toDateString(), $end->toDateString()])
                       ->orWhere(function ($q2) use ($start14, $end) {
                           $q2->whereNull('task_date')
                              ->whereBetween('created_at', [$start14, $end]);
@@ -744,7 +755,7 @@ class MonitoringController extends Controller
 
             foreach ($members as $u) {
                 $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                        $q->whereBetween('task_date', [$start, $end])
+                        $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
                           ->orWhere(function ($q2) use ($start, $end) {
                               $q2->whereNull('task_date')
                                  ->whereBetween('created_at', [$start, $end]);

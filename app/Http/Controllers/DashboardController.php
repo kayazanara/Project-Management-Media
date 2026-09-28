@@ -99,9 +99,13 @@ class DashboardController extends Controller
         // ==========================================
         // 7. ⭐ PERINGKAT ANGGOTA — SISTEM POIN
         // ==========================================
-        // Ambil semua task dalam periode (pakai task_date, fallback created_at)
-        $tasksInPeriod = ProjectTask::where(function ($q) use ($start, $end) {
-                $q->whereBetween('task_date', [$start, $end])
+        // Ambil task yang SUDAH SELESAI dalam periode (pakai task_date, fallback created_at)
+        // ⚡ FIX: poin hanya dihitung untuk task berstatus Completed.
+        // Sebelumnya SEMUA task ikut memberi poin (termasuk Pending / In Progress)
+        // begitu bobotnya diisi Pembina, sehingga anggota dapat poin tanpa menyelesaikan task.
+        $tasksInPeriod = ProjectTask::where('status', 'Completed')
+            ->where(function ($q) use ($start, $end) {
+                $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
                   ->orWhere(function ($q2) use ($start, $end) {
                       $q2->whereNull('task_date')
                          ->whereBetween('created_at', [$start, $end]);
