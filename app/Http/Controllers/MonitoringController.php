@@ -669,7 +669,7 @@ class MonitoringController extends Controller
 
             $aktifTasks = ProjectTask::where('status', '!=', 'Completed')
                 ->where($atribusi)
-                ->with(['contributors:id'])
+                ->with(['contributors:id', 'project:id,name'])
                 ->get();
 
             $selesaiTasks = ProjectTask::where('status', 'Completed')
@@ -701,12 +701,26 @@ class MonitoringController extends Controller
                 $points += ((float) $task->weight) / count($contributorIds);
             }
 
-            // ⚡ FASE 2: status ditentukan dari TOTAL POIN periode ini (bukan rasio task aktif).
+            // ⚡ Detail bobot per anggota (untuk modal saat "Estimasi Beban" diklik)
+            $bebanItems = $aktifTasks->map(fn ($t) => [
+                'title'     => $t->title,
+                'project'   => $t->project->name ?? '-',
+                'weight'    => (float) $t->weight,
+                'status'    => $t->status,
+                'task_date' => $t->task_date ? $t->task_date->format('d M Y') : '-',
+            ])->values()->toArray();
+
+            // ⚡ Status ditentukan dari RASIO TASK AKTIF (sesuai permintaan):
+            //   0-34% Ringan • 35-59% Seimbang • 60-79% Mulai Berat • 80-89% Berat • 90-100% Overload
             if ($totalTasks === 0) {
                 $status = 'idle'; $statusLabel = 'Idle'; $statusColor = 'secondary'; $statusIcon = 'fa-circle';
-            } elseif ($points >= self::OVERLOAD_POINTS) {
+            } elseif ($activeRatio >= 90) {
                 $status = 'overload'; $statusLabel = 'Overload'; $statusColor = 'danger'; $statusIcon = 'fa-exclamation-triangle';
-            } elseif ($points >= self::BALANCED_MIN_POINTS) {
+            } elseif ($activeRatio >= 80) {
+                $status = 'heavy'; $statusLabel = 'Berat'; $statusColor = 'danger'; $statusIcon = 'fa-fire';
+            } elseif ($activeRatio >= 60) {
+                $status = 'starting_heavy'; $statusLabel = 'Mulai Berat'; $statusColor = 'warning'; $statusIcon = 'fa-exclamation-circle';
+            } elseif ($activeRatio >= 35) {
                 $status = 'balanced'; $statusLabel = 'Seimbang'; $statusColor = 'success'; $statusIcon = 'fa-check-circle';
             } else {
                 $status = 'light'; $statusLabel = 'Ringan'; $statusColor = 'info'; $statusIcon = 'fa-info-circle';
@@ -724,6 +738,7 @@ class MonitoringController extends Controller
                 'active_ratio'    => $activeRatio,
                 'points'          => (int) round($points),
                 'planned_load'    => (int) round($plannedLoad),
+                'beban_items'     => $bebanItems,
                 'status'          => $status,
                 'status_label'    => $statusLabel,
                 'status_color'    => $statusColor,
@@ -731,13 +746,20 @@ class MonitoringController extends Controller
             ];
         }
 
-        // ⚡ FASE 2: Overload paling atas, lalu poin terbesar
+        // ⚡ Urutan: paling berat dulu, lalu rasio aktif tertinggi
         usort($result, function ($a, $b) {
-            $order = ['overload' => 1, 'balanced' => 2, 'light' => 3, 'idle' => 4];
+            $order = [
+                'overload'       => 1,
+                'heavy'          => 2,
+                'starting_heavy' => 3,
+                'balanced'       => 4,
+                'light'          => 5,
+                'idle'           => 6,
+            ];
 
             $statusCompare = ($order[$a['status']] ?? 99) <=> ($order[$b['status']] ?? 99);
 
-            return $statusCompare !== 0 ? $statusCompare : ($b['points'] <=> $a['points']);
+            return $statusCompare !== 0 ? $statusCompare : ($b['active_ratio'] <=> $a['active_ratio']);
         });
 
         return $result;

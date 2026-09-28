@@ -373,13 +373,16 @@
             </div>
             <div class="card-body">
                 <div class="alert alert-light border small mb-3">
-                    Status dihitung dari <strong>total poin periode ini</strong>
-                    ({{ $filterDays }} hari, hanya task yang sudah selesai):
-                    <strong>Overload</strong> ≥ {{ $overloadPoints }} poin •
-                    <strong>Seimbang</strong> {{ $balancedMin }}–{{ $overloadPoints - 1 }} •
-                    <strong>Ringan</strong> &lt; {{ $balancedMin }} • <strong>Idle</strong> tanpa task.<br>
-                    <strong>Estimasi Beban</strong> = total bobot task yang dijadwalkan pada periode ini
-                    (termasuk yang belum selesai).
+                    <strong>Status</strong> dihitung dari <strong>Rasio Aktif</strong> (task belum selesai ÷ total task):
+                    <span class="badge badge-info">Ringan 0–34%</span>
+                    <span class="badge badge-success">Seimbang 35–59%</span>
+                    <span class="badge badge-warning">Mulai Berat 60–79%</span>
+                    <span class="badge badge-danger">Berat 80–89%</span>
+                    <span class="badge badge-danger">Overload 90–100%</span>
+                    &bull; <strong>Idle</strong> jika belum punya task.<br>
+                    <strong>Poin</strong> = bobot ÷ jumlah kontributor, hanya task yang <strong>SELESAI</strong> pada periode ini.
+                    <strong>Estimasi Beban</strong> = total bobot tugas yang dibebankan &amp; belum selesai
+                    (<strong>klik angkanya</strong> untuk lihat rincian bobotnya).
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
@@ -416,12 +419,18 @@
                                     </td>
                                     <td><span class="badge badge-secondary">{{ $w['division'] }}</span></td>
                                     <td class="text-center">
-                                        <strong class="{{ $w['points'] >= $overloadPoints ? 'text-danger' : 'text-gray-800' }}">
-                                            {{ $w['points'] }}
-                                        </strong>
+                                        <button type="button" class="btn btn-link p-0 btn-poin-workload"
+                                                data-user="{{ $w['id'] }}" title="Klik untuk lihat rincian poin">
+                                            <strong class="text-primary">{{ $w['points'] }}</strong>
+                                        </button>
                                     </td>
                                     <td class="text-center">
-                                        <span class="badge badge-light border">{{ $w['planned_load'] }} bobot</span>
+                                        <button type="button" class="btn btn-link p-0 btn-beban-detail"
+                                                data-name="{{ $w['name'] }}"
+                                                data-items="{{ json_encode($w['beban_items']) }}"
+                                                title="Klik untuk lihat rincian bobot">
+                                            <span class="badge badge-light border">{{ $w['planned_load'] }} bobot</span>
+                                        </button>
                                     </td>
                                     <td class="text-center"><strong>{{ $w['active_tasks'] }}</strong></td>
                                     <td class="text-center text-success">{{ $w['completed_tasks'] }}</td>
@@ -629,6 +638,11 @@
 {{-- ⚡ FASE 3: modal riwayat poin --}}
 <div class="td-modal-backdrop" id="tdHistoryModal">
     <div class="td-modal-content" id="tdHistoryContent"></div>
+</div>
+
+{{-- ⚡ Modal rincian Estimasi Beban (dibuka dengan klik angka bobot) --}}
+<div class="td-modal-backdrop" id="bebanModal">
+    <div class="td-modal-content" id="bebanContent"></div>
 </div>
 
 <script id="tdData" type="application/json">
@@ -1239,7 +1253,99 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
             closePointHistory();
+            closeBebanDetail();
         }
+    });
+
+    // ==========================================================
+    // ⚡ RINCIAN ESTIMASI BEBAN (klik angka bobot)
+    // ==========================================================
+
+    const bebanModal = document.getElementById('bebanModal');
+    const bebanContent = document.getElementById('bebanContent');
+
+    function openBebanDetail(nama, items) {
+        let rows = '';
+
+        if (!items || items.length === 0) {
+            rows = '<tr><td colspan="4" class="text-center text-muted py-4">Tidak ada tugas yang sedang dibebankan.</td></tr>';
+        } else {
+            let total = 0;
+
+            items.forEach(function (it) {
+                total += Number(it.weight) || 0;
+
+                rows += '<tr>'
+                    + '<td><div class="font-weight-bold" style="font-size:13px;">' + escapeHtml(it.title) + '</div>'
+                    + '<small class="text-muted">' + escapeHtml(it.project) + '</small></td>'
+                    + '<td class="text-center"><strong class="text-primary">' + it.weight + '</strong></td>'
+                    + '<td class="text-center"><small>' + escapeHtml(it.task_date) + '</small></td>'
+                    + '<td class="text-center"><span class="badge badge-light border">' + escapeHtml(it.status) + '</span></td>'
+                    + '</tr>';
+            });
+
+            rows += '<tr class="table-light">'
+                + '<td class="text-right font-weight-bold">TOTAL</td>'
+                + '<td class="text-center font-weight-bold text-primary">' + total + '</td>'
+                + '<td colspan="2"></td>'
+                + '</tr>';
+        }
+
+        bebanContent.innerHTML = `
+            <button type="button" class="td-modal-close" id="bebanClose">&times;</button>
+            <div class="p-4">
+                <h5 class="font-weight-bold mb-1"><i class="fas fa-weight-hanging text-primary mr-1"></i> Rincian Estimasi Beban</h5>
+                <p class="text-muted small mb-3">${escapeHtml(nama)} &bull; tugas yang dibebankan &amp; belum selesai</p>
+                <div class="table-responsive" style="max-height: 50vh; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Task / Project</th>
+                                <th class="text-center">Bobot</th>
+                                <th class="text-center">Target</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        bebanModal.classList.add('show');
+        document.getElementById('bebanClose').addEventListener('click', closeBebanDetail);
+    }
+
+    function closeBebanDetail() {
+        bebanModal.classList.remove('show');
+        setTimeout(function () { bebanContent.innerHTML = ''; }, 300);
+    }
+
+    bebanModal.addEventListener('click', function (e) {
+        if (e.target === bebanModal) {
+            closeBebanDetail();
+        }
+    });
+
+    document.querySelectorAll('.btn-beban-detail').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            let items = [];
+
+            try {
+                items = JSON.parse(btn.getAttribute('data-items') || '[]');
+            } catch (err) {
+                items = [];
+            }
+
+            openBebanDetail(btn.getAttribute('data-name') || '', items);
+        });
+    });
+
+    // Klik angka Poin -> buka Riwayat Poin
+    document.querySelectorAll('.btn-poin-workload').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openPointHistory({ id: btn.getAttribute('data-user') });
+        });
     });
 
     applyFilterAndSort();
