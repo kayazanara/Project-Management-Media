@@ -224,6 +224,18 @@ class MonitoringController extends Controller
         $aktivitasSesi = $this->lastActivityPerUser();
         $batasOnline   = now()->subMinutes(5);
 
+        // ⚡ PERF: peta poin bulanan dihitung SEKALI di luar loop anggota.
+        // Sebelumnya getUserMonthlyTrend() menembak 6 query untuk SETIAP anggota.
+        $bulanKunci = [];
+        $bulanLabel = [];
+
+        for ($i = 5; $i >= 0; $i--) {
+            $bulanKunci[] = now()->subMonths($i)->format('Y-m');
+            $bulanLabel[] = now()->subMonths($i)->translatedFormat('M Y');
+        }
+
+        $petaBulanan = $this->monthlyPointsMap(now()->subMonths(5)->startOfMonth(), now()->endOfMonth());
+
         foreach ($users as $u) {
             $points = 0;
             $taskCount = 0;
@@ -299,9 +311,13 @@ class MonitoringController extends Controller
                 ? $roleLabel
                 : ($roleLabel . ' • ' . $divisionLabel);
 
-            $trend = $this->getUserMonthlyTrend($u);
-            $trendLabels = $trend['labels'];
-            $trendData = $trend['data'];
+            // ⚡ PERF: pakai peta bulanan yang sudah dihitung di luar loop (dulu 6 query per anggota)
+            $trendLabels = $bulanLabel;
+            $trendData = [];
+
+            foreach ($bulanKunci as $kunci) {
+                $trendData[] = round($petaBulanan[$u->id][$kunci] ?? 0);
+            }
 
             $recentTasks = ProjectTask::where(function ($q) use ($u) {
                     $q->where('assigned_to', $u->id)
@@ -431,6 +447,12 @@ class MonitoringController extends Controller
         return $result;
     }
 
+    /**
+     * @deprecated ⚡ PERF (audit): method ini SUDAH TIDAK DIPAKAI.
+     * Poin bulanan per anggota kini dihitung SEKALI lewat monthlyPointsMap() dan dipakai
+     * bersama oleh buildMonthlyTrend() + buildTeamDirectory() (menghapus ~150 query/halaman).
+     * Aman dihapus kapan saja (tidak dipanggil dari mana pun).
+     */
     private function getUserMonthlyTrend(User $u): array
     {
         $labels = [];
@@ -630,36 +652,15 @@ class MonitoringController extends Controller
         $datasets = [];
         $colors = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#8b5cf6', '#f59f0b', '#224abe'];
 
+        // ⚡ PERF: poin semua anggota dihitung SEKALI saja.
+        // Sebelumnya: 1 query per anggota × per bulan (13 × 6 = 78 query) per permintaan halaman.
+        $petaPoin = $this->monthlyPointsMap($months[0]['start'], now()->endOfMonth());
+
         foreach ($users as $user) {
             $userPoints = [];
 
             foreach ($months as $m) {
-                // ⚡ FIX (B3/B2): poin tren bulanan diatribusikan ke bulan task itu SELESAI
-                // (completed_at). Sebelumnya memakai tanggal RENCANA -> poin task yang selesai
-                // bulan ini bisa "nyasar" ke bulan rencananya.
-                $tasks = ProjectTask::where('status', 'Completed')
-                    ->whereBetween('completed_at', [$m['start'], $m['end']])
-                    ->whereHas('contributors', function ($q) use ($user) {
-                        $q->where('users.id', $user->id);
-                    })
-                    ->with(['contributors:id', 'assignedUser:id'])
-                    ->get();
-
-                $points = 0;
-                foreach ($tasks as $task) {
-                    $contributorIds = $task->contributors->pluck('id')->toArray();
-                    if (empty($contributorIds) && $task->assigned_to) {
-                        $contributorIds = [(int) $task->assigned_to];
-                    }
-                    if (empty($contributorIds)) continue;
-
-                    // ⚡ FIX: poin HANYA untuk task yang benar-benar SELESAI
-                    if (in_array($user->id, $contributorIds) && $task->status === 'Completed') {
-                        $points += ((float) $task->weight) / count($contributorIds);
-                    }
-                }
-
-                $userPoints[] = round($points);
+                $userPoints[] = round($petaPoin[$user->id][$m['start']->format('Y-m')] ?? 0);
             }
 
             if (array_sum($userPoints) === 0) continue;
