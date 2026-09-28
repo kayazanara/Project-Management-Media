@@ -21,8 +21,21 @@ class WhatsappNotifier
         $this->session = config('services.waha.session', 'default');
     }
 
+    /**
+     * Apakah fitur notifikasi WhatsApp (WAHA) aktif?
+     * Default true supaya perilaku lama tidak berubah.
+     */
+    public function enabled(): bool
+    {
+        return (bool) config('services.waha.enabled', true);
+    }
+
     public function send(string $phone, string $message): array
     {
+        if (! $this->enabled()) {
+            return ['success' => false, 'message' => 'WAHA nonaktif (WAHA_ENABLED=false)', 'response' => []];
+        }
+
         $chatId = PhoneHelper::toChatId($phone);
 
         if (!$chatId) {
@@ -51,13 +64,22 @@ class WhatsappNotifier
                 'response' => $response->json() ?? [],
             ];
         } catch (\Throwable $e) {
-            Log::error("WAHA send failed: {$e->getMessage()}", ['phone' => $phone]);
+            // Service WAHA mati itu hal wajar (mis. belum dijalankan) -> warning, bukan error,
+            // supaya tidak menutupi error asli di log.
+            Log::warning("WAHA tidak bisa dihubungi ({$this->baseUrl}): {$e->getMessage()}", ['phone' => $phone]);
+
             return ['success' => false, 'message' => $e->getMessage(), 'response' => []];
         }
     }
 
     public function sendAndLog(User $user, ?int $projectId, string $type, string $message): bool
     {
+        if (! $this->enabled()) {
+            Log::warning("Notifikasi WA dilewati (WAHA nonaktif): {$type} user={$user->id}");
+
+            return false;
+        }
+
         if (empty($user->phone)) {
             Log::warning("User {$user->id} tidak punya nomor WA");
             return false;

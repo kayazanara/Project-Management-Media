@@ -27,23 +27,16 @@ return [
     |--------------------------------------------------------------------------
     | WhatsApp (WAHA)
     |--------------------------------------------------------------------------
+    | 'enabled' default true supaya perilaku lama tidak berubah.
+    | Set WAHA_ENABLED=false kalau service WAHA sedang tidak dipakai — semua
+    | pengiriman notifikasi dilewati tanpa menulis error ke log.
     */
     'waha' => [
+        'enabled' => env('WAHA_ENABLED', true),
         'url' => env('WAHA_URL', 'http://localhost:3000'),
         'api_key' => env('WAHA_API_KEY'),
         'session' => env('WAHA_SESSION', 'default'),
         'timeout' => 15,
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | n8n Webhook
-    |--------------------------------------------------------------------------
-    */
-    'n8n' => [
-        'webhook_url' => env('N8N_WEBHOOK_URL'),
-        'webhook_secret' => env('N8N_WEBHOOK_SECRET'),
-        'timeout' => 10,
     ],
 
 ];
