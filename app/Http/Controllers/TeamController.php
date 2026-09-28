@@ -153,6 +153,25 @@ class TeamController extends Controller
             return back()->with('error', 'Ini akun Pembina terakhir — tidak boleh dihapus.');
         }
 
+        // ⚡ AUDIT (D1): dulu user dihapus HARD tanpa memeriksa relasinya -> bisa meninggalkan
+        // baris yatim (PIC task, kontributor, keanggotaan project). Sekarang diperiksa dulu.
+        $relasi = [
+            'task sebagai PIC' => \App\Models\ProjectTask::where('assigned_to', $user->id)->count(),
+            'kontributor task' => \Illuminate\Support\Facades\DB::table('project_task_contributors')->where('user_id', $user->id)->count(),
+            'keanggotaan project' => $user->projects()->count(),
+        ];
+
+        $totalRelasi = array_sum($relasi);
+
+        if ($totalRelasi > 0) {
+            $rincian = collect($relasi)
+                ->filter(fn ($jml) => $jml > 0)
+                ->map(fn ($jml, $nama) => "{$nama}: {$jml}")
+                ->implode(', ');
+
+            return back()->with('error', "Anggota ini masih terhubung dengan {$totalRelasi} data ({$rincian}). Pindahkan/hapus datanya dulu, atau ubah statusnya menjadi Non-Aktif — supaya data lama tidak jadi yatim.");
+        }
+
         $user->delete();
 
         return redirect()->route('team.index')->with('success', 'Anggota tim berhasil dihapus!');
