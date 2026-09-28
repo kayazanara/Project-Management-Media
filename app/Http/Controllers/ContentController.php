@@ -168,6 +168,12 @@ class ContentController extends Controller
 
     public function store(Request $request)
     {
+        // ⚡ FIX (S3): sebelumnya TANPA cek hak akses -> anggota Broadcast mana pun bisa
+        // membuat konten di project mana pun.
+        if (! $this->canEditOrDeleteContent(Auth::user())) {
+            abort(403, 'Anda tidak berhak menambah konten.');
+        }
+
         $request->validate([
             'project_id'      => 'required|exists:projects,id',
             'title'           => 'required|string|max:255',
@@ -238,13 +244,17 @@ class ContentController extends Controller
 
         $content = Content::findOrFail($id);
 
+        // ⚡ FIX (S1): JANGAN pernah mengosongkan data yang sudah ada.
+        // Sebelumnya 'file_url' & 'caption' diambil mentah dari request (tanpa fallback),
+        // sementara form Edit tidak memuat nilai lama -> sekali klik Simpan,
+        // link file & caption/deskripsi konten HILANG.
         $content->update([
             'project_id' => $request->project_id,
             'title'      => $request->title,
-            'type'       => $request->type ?? $content->type,
-            'platform'   => $request->platform ?? $content->platform,
-            'file_url'   => $request->file_url,
-            'caption'    => $request->caption,
+            'type'       => $request->filled('type') ? $request->type : $content->type,
+            'platform'   => $request->filled('platform') ? $request->platform : $content->platform,
+            'file_url'   => $request->filled('file_url') ? $request->file_url : $content->file_url,
+            'caption'    => $request->filled('caption') ? $request->caption : $content->caption,
         ]);
 
         return redirect()->route('contents.index')
@@ -272,10 +282,21 @@ class ContentController extends Controller
 
     public function updateStatus(Request $request, $id)
     {
+        $user = Auth::user();
+
+        // ⚡ FIX (S2): sebelumnya TIDAK ADA cek hak akses sama sekali -> siapa pun yang bisa
+        // membuka grup route ini (termasuk anggota Broadcast biasa) bisa mengubah status
+        // konten milik siapa pun. Sekarang disamakan dengan edit/update/destroy.
+        if (! $this->canEditOrDeleteContent($user)) {
+            abort(403, 'Anda tidak berhak mengubah status konten.');
+        }
+
         $content = Content::findOrFail($id);
 
         $request->validate([
-            'status' => 'required|in:Ready,Uploaded,Archived,Completed',
+            'status' => 'required|in:Ready,Uploaded,Archived',
+        ], [
+            'status.in' => 'Status hanya boleh Ready, Uploaded (sudah diposting), atau Archived.',
         ]);
 
         $updateData = ['status' => $request->status];
@@ -289,6 +310,70 @@ class ContentController extends Controller
         $content->update($updateData);
 
         return redirect()->back()->with('success', 'Status konten berhasil diperbarui!');
+    }
+
+    // ============================================================
+    // ⚡ POST / UNPOST — alur baru: Ready -> "Sudah Diposting"
+    // ============================================================
+
+    /**
+     * Tandai konten sudah diposting.
+     * Nilai status tetap memakai 'Uploaded' yang sudah ada (tanpa ubah struktur data),
+     * hanya ditampilkan sebagai "Sudah Diposting" di UI.
+     */
+    public function post(Request $request, $id)
+    {
+        $user = Auth::user();
+
+        if (! $this->canEditOrDeleteContent($user)) {
+            abort(403, 'Anda tidak berhak memposting konten.');
+        }
+
+        $content = Content::findOrFail($id);
+
+        if ($content->upload_type !== 'content_stock') {
+            return back()->with('error', 'Tombol Post hanya untuk konten Stock.');
+        }
+
+        if (! $content->broadcast_filled_at) {
+            return back()->with('error', 'Isi metadata dulu sebelum konten bisa diposting.');
+        }
+
+        if ($content->status === 'Uploaded') {
+            return back()->with('error', 'Konten ini sudah diposting.');
+        }
+
+        $content->update([
+            'status'      => 'Uploaded',
+            'uploaded_at' => now(),
+        ]);
+
+        return back()->with('success', 'Konten ' . $content->content_code . ' ditandai SUDAH DIPOSTING.');
+    }
+
+    /**
+     * Batalkan posting (kembali ke Ready).
+     */
+    public function unpost(Request $request, $id)
+    {
+        $user = Auth::user();
+
+        if (! $this->canEditOrDeleteContent($user)) {
+            abort(403, 'Anda tidak berhak membatalkan posting.');
+        }
+
+        $content = Content::findOrFail($id);
+
+        if ($content->status !== 'Uploaded') {
+            return back()->with('error', 'Konten ini tidak dalam status sudah diposting.');
+        }
+
+        $content->update([
+            'status'      => 'Ready',
+            'uploaded_at' => null,
+        ]);
+
+        return back()->with('success', 'Posting konten ' . $content->content_code . ' dibatalkan (kembali ke Ready).');
     }
 
     // ============================================================
@@ -542,8 +627,10 @@ class ContentController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isBroadcast() && !$user->isManager()) {
-            return back()->with('error', 'Hanya Divisi Broadcast atau Manager yang bisa mengisi metadata.');
+        // ⚡ FIX: hanya Kepala Divisi Broadcast / Ketua Media / Pembina
+        // (sebelumnya semua anggota Broadcast boleh mengisi metadata).
+        if (! $this->canEditOrDeleteContent($user)) {
+            return back()->with('error', 'Hanya Kepala Divisi Broadcast, Ketua Media, atau Pembina yang bisa mengisi metadata.');
         }
 
         $request->validate([
@@ -556,6 +643,11 @@ class ContentController extends Controller
 
         $content = Content::findOrFail($id);
 
+        // ⚡ FIX (S10): metadata hanya untuk konten Stock
+        if ($content->upload_type !== 'content_stock') {
+            return back()->with('error', 'Metadata hanya untuk konten Stock.');
+        }
+
         $content->update([
             'category'            => $request->category,
             'content_type'        => $request->content_type,
@@ -563,21 +655,31 @@ class ContentController extends Controller
             'platform'            => $request->platform,
             'caption'             => $request->caption,
             'broadcast_filled_at' => now(),
-            'status'              => 'Completed',
-            'uploaded_at'         => $content->uploaded_at ?? now(),
+            // ⚡ FIX (alur baru): setelah metadata, status jadi READY (siap diposting),
+            // BUKAN 'Completed' — 'Completed' itu yang memotong alur & bikin konten
+            // langsung lompat ke riwayat tanpa pernah lewat tahap "diposting".
+            'status'              => 'Ready',
         ]);
 
         return redirect()->route('contents.index')
-            ->with('success', 'Metadata berhasil diisi & konten ditandai Complete!');
+            ->with('success', 'Metadata tersimpan! Konten berstatus READY — siap diposting.');
     }
 
     public function formBroadcastMetadata($id)
     {
+        $user = Auth::user();
+
+        // ⚡ FIX (S10): form metadata ikut dibatasi (sebelumnya cek hanya di PATCH,
+        // jadi halaman form-nya bisa dibuka siapa pun).
+        if (! $this->canEditOrDeleteContent($user)) {
+            abort(403, 'Anda tidak berhak mengisi metadata konten.');
+        }
+
         $content = Content::findOrFail($id);
 
         if ($content->upload_type !== 'content_stock') {
             return redirect()->route('contents.index')
-                ->with('error', 'Hanya content_stock yang perlu metadata.');
+                ->with('error', 'Metadata hanya untuk konten Stock.');
         }
 
         return view('contents.broadcast-edit', [
@@ -590,18 +692,33 @@ class ContentController extends Controller
     // HELPER
     // ============================================================
 
+    /**
+     * ⚡ FIX (S4): kode konten dihitung dari NOMOR TERBESAR (bukan baris id terakhir),
+     * format seragam 3 digit mengikuti data lamamu, dan dicek supaya tidak bentrok.
+     *
+     * Sebelumnya: ambil baris dengan id terbesar lalu str_replace mentah -> kalau ada kode
+     * lama berformat beda (DAK023 vs DAK24) nomornya bisa salah, dan kalau bentrok SELURUH
+     * batch upload gagal karena ada unique index di content_code.
+     */
     private function generateContentCode(string $prefix): string
     {
-        $last = Content::where('content_code', 'like', $prefix . '%')
-            ->orderBy('id', 'desc')
-            ->first();
+        $angkaTerbesar = 0;
 
-        $next = 1;
-        if ($last) {
-            $n = (int) str_replace($prefix, '', $last->content_code);
-            $next = $n + 1;
+        foreach (Content::where('content_code', 'like', $prefix . '%')->pluck('content_code') as $kode) {
+            $angka = (int) preg_replace('/\D/', '', substr((string) $kode, strlen($prefix)));
+
+            if ($angka > $angkaTerbesar) {
+                $angkaTerbesar = $angka;
+            }
         }
 
-        return $prefix . str_pad($next, 2, '0', STR_PAD_LEFT);
+        $next = $angkaTerbesar + 1;
+
+        // Lewati nomor yang ternyata sudah dipakai (jaga-jaga kalau ada kode berformat lain)
+        while (Content::where('content_code', $prefix . str_pad((string) $next, 3, '0', STR_PAD_LEFT))->exists()) {
+            $next++;
+        }
+
+        return $prefix . str_pad((string) $next, 3, '0', STR_PAD_LEFT);
     }
 }

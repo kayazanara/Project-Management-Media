@@ -159,6 +159,10 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['divisi.access:pembina|broadcast|manager'])->group(function () {
         Route::resource('contents', ContentController::class)->except(['show']);
         Route::patch('/contents/{id}/status', [ContentController::class, 'updateStatus'])->name('contents.status');
+
+        // ⚡ Alur baru: Ready -> Sudah Diposting (dan bisa dibatalkan)
+        Route::post('/contents/{id}/post', [ContentController::class, 'post'])->name('contents.post');
+        Route::post('/contents/{id}/unpost', [ContentController::class, 'unpost'])->name('contents.unpost');
     });
 
     // ==========================================
