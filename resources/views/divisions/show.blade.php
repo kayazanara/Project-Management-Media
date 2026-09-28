@@ -293,7 +293,7 @@
                                                         <span class="text-muted small font-italic">Belum ada kontributor</span>
                                                     @endif
                                                 </td>
-                                                <td>{{ $task->task_date ?? '-' }}</td>
+                                                <td>{{ $task->task_date?->format('d M Y') ?? '-' }}</td>
                                                 <td>
                                                     @if($task->completed_at)
                                                         <span class="badge badge-success">

@@ -529,6 +529,7 @@
                                         'unauthorized' => 'danger',
                                         'no_session'   => 'warning',
                                         'offline'      => 'dark',
+                                        'disabled'     => 'secondary',
                                         default        => 'danger',
                                     };
                                     $wahaLabel = match($systemHealth['waha_status']) {
@@ -539,6 +540,7 @@
                                         'unauthorized' => 'API Key Error',
                                         'no_session'   => 'No Session',
                                         'offline'      => 'Offline',
+                                        'disabled'     => 'Dimatikan (WAHA_ENABLED=false)',
                                         default        => 'Unknown',
                                     };
                                 @endphp

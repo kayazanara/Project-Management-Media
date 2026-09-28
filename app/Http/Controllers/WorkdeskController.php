@@ -106,7 +106,11 @@ class WorkdeskController extends Controller
 
     private function calculatePointsInRange(Carbon $start, Carbon $end): array
     {
-        $tasks = ProjectTask::where(function ($q) use ($start, $end) {
+        // ⚡ FIX: poin HANYA untuk task berstatus Completed.
+        // Sebelumnya semua task yang sudah punya bobot ikut memberi poin
+        // (termasuk Pending / In Progress) -> Top Members Workdesk salah.
+        $tasks = ProjectTask::where('status', 'Completed')
+            ->where(function ($q) use ($start, $end) {
                 $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
                   ->orWhere(function ($q2) use ($start, $end) {
                       $q2->whereNull('task_date')
@@ -397,9 +401,15 @@ class WorkdeskController extends Controller
         $prevEnd = now()->subWeek()->endOfWeek();
 
         foreach ($divisions as $divName => $meta) {
-            $memberIds = User::where('division', 'like', "%{$divName}%")->pluck('id');
+            // ⚡ FIX: hanya anggota berstatus Aktif (sebelumnya semua status ikut dihitung,
+            // beda dengan halaman Monitoring yang sudah memfilter Aktif).
+            $memberIds = User::where('division', 'like', "%{$divName}%")
+                ->where('status', 'Aktif')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
 
-            if ($memberIds->isEmpty()) {
+            if (empty($memberIds)) {
                 $result[] = [
                     'name' => $divName,
                     'label' => $meta['label'],
@@ -415,7 +425,18 @@ class WorkdeskController extends Controller
                 continue;
             }
 
-            $totalTasks = ProjectTask::whereIn('assigned_to', $memberIds)
+            // ⚡ FIX: atribusi kerja disamakan dengan sistem poin —
+            // pakai KONTRIBUTOR; kalau task belum punya kontributor, pakai PIC (assigned_to).
+            // Sebelumnya hanya assigned_to, sehingga bisa beda dengan Top Members.
+            $weekTasks = ProjectTask::where(function ($q) use ($memberIds) {
+                    $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
+                      ->orWhere(function ($q2) use ($memberIds) {
+                          $q2->whereDoesntHave('contributors')
+                             ->whereIn('assigned_to', $memberIds);
+                      });
+                })
+                // ⚡ FIX: SATU basis periode untuk pembilang & penyebut
+                // (sebelumnya total pakai task_date OR completed_at, tapi pembilang hanya completed_at)
                 ->where(function ($q) use ($startOfWeek, $endOfWeek) {
                     $q->whereBetween('task_date', [$startOfWeek->toDateString(), $endOfWeek->toDateString()])
                       ->orWhere(function ($q2) use ($startOfWeek, $endOfWeek) {
@@ -423,28 +444,24 @@ class WorkdeskController extends Controller
                              ->whereBetween('completed_at', [$startOfWeek, $endOfWeek]);
                       });
                 })
-                ->count();
+                ->get();
 
-            $completedTasks = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->where('status', 'Completed')
-                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
-                ->count();
+            $totalTasks     = $weekTasks->count();
+            $completedTasks = $weekTasks->where('status', 'Completed')->count();
 
-            $onTimeTasks = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->where('status', 'Completed')
-                ->whereNotNull('task_date')
-                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
-                ->whereColumn('completed_at', '<=', 'task_date')
-                ->count();
+            // ⚡ FIX: on-time dibandingkan per TANGGAL.
+            // Sebelumnya whereColumn('completed_at','<=','task_date') membandingkan
+            // datetime dengan date sehingga hasilnya SELALU 0% (semua dianggap telat).
+            $onTimeTasks = $weekTasks->filter(function ($t) {
+                if ($t->status !== 'Completed' || !$t->task_date || !$t->completed_at) {
+                    return false;
+                }
 
-            $weightedTotal = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->whereBetween('task_date', [$startOfWeek->toDateString(), $endOfWeek->toDateString()])
-                ->sum('weight');
+                return $t->completed_at->toDateString() <= $t->task_date->toDateString();
+            })->count();
 
-            $weightedDone = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->where('status', 'Completed')
-                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
-                ->sum('weight');
+            $weightedTotal = (int) $weekTasks->sum('weight');
+            $weightedDone  = (int) $weekTasks->where('status', 'Completed')->sum('weight');
 
             $completedProjects = Project::whereHas('users', function ($q) use ($memberIds) {
                 $q->whereIn('users.id', $memberIds);
@@ -467,7 +484,14 @@ class WorkdeskController extends Controller
                 ($completionRate * 0.4) + ($onTimeRate * 0.4) + ($weightedRate * 0.2)
             );
 
-            $prevCompleted = ProjectTask::whereIn('assigned_to', $memberIds)
+            // ⚡ FIX: atribusi sama (kontributor, fallback PIC) supaya tren minggu lalu sebanding
+            $prevCompleted = ProjectTask::where(function ($q) use ($memberIds) {
+                    $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
+                      ->orWhere(function ($q2) use ($memberIds) {
+                          $q2->whereDoesntHave('contributors')
+                             ->whereIn('assigned_to', $memberIds);
+                      });
+                })
                 ->where('status', 'Completed')
                 ->whereBetween('completed_at', [$prevStart, $prevEnd])
                 ->count();
@@ -513,9 +537,14 @@ class WorkdeskController extends Controller
         ];
 
         foreach ($divisions as $divName => $meta) {
-            $memberIds = User::where('division', 'like', "%{$divName}%")->pluck('id');
+            // ⚡ FIX: hanya anggota berstatus Aktif (konsisten dengan performa divisi & Monitoring)
+            $memberIds = User::where('division', 'like', "%{$divName}%")
+                ->where('status', 'Aktif')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
 
-            if ($memberIds->isEmpty()) {
+            if (empty($memberIds)) {
                 $result['datasets'][] = [
                     'label' => $meta['label'],
                     'hex' => $meta['hex'],
@@ -524,7 +553,14 @@ class WorkdeskController extends Controller
                 continue;
             }
 
-            $totalTasks = ProjectTask::whereIn('assigned_to', $memberIds)->count();
+            // ⚡ FIX: atribusi sama dengan sistem poin (kontributor, fallback PIC)
+            $totalTasks = ProjectTask::where(function ($q) use ($memberIds) {
+                    $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
+                      ->orWhere(function ($q2) use ($memberIds) {
+                          $q2->whereDoesntHave('contributors')
+                             ->whereIn('assigned_to', $memberIds);
+                      });
+                })->count();
 
             $data = [];
             foreach ($dates as $date) {
@@ -533,7 +569,13 @@ class WorkdeskController extends Controller
                     continue;
                 }
 
-                $completed = ProjectTask::whereIn('assigned_to', $memberIds)
+                $completed = ProjectTask::where(function ($q) use ($memberIds) {
+                        $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
+                          ->orWhere(function ($q2) use ($memberIds) {
+                              $q2->whereDoesntHave('contributors')
+                                 ->whereIn('assigned_to', $memberIds);
+                          });
+                    })
                     ->where('status', 'Completed')
                     ->whereDate('completed_at', '<=', $date)
                     ->count();
@@ -642,12 +684,17 @@ class WorkdeskController extends Controller
                 'progress' => $progress,
                 'deadline' => $p->deadline ? $p->deadline->format('d M Y') : '-',
                 'status' => $p->status,
-                'days_left' => $p->deadline ? now()->diffInDays($p->deadline, false) : null,
+                'days_left' => $p->deadline ? (int) round(now()->diffInDays($p->deadline, false)) : null,
             ];
+
+            // ⚡ FIX: at-risk = deadline <= 3 hari lagi DAN belum terlewat.
+            // Sebelumnya tandanya terbalik ($p->deadline->diffInDays(now(), false) <= 3) sehingga
+            // SEMUA project berdeadline masih jauh ikut dicap "At Risk" (mis. sisa 26 hari, progress 0%).
+            $daysLeft = $data['days_left'];
 
             if ($p->is_overdue) {
                 $overdue[] = $data;
-            } elseif ($p->deadline && $p->deadline->diffInDays(now(), false) <= 3 && $progress < 50) {
+            } elseif ($daysLeft !== null && $daysLeft >= 0 && $daysLeft <= 3 && $progress < 50) {
                 $atRisk[] = $data;
             } else {
                 $onTrack[] = $data;
@@ -719,6 +766,19 @@ class WorkdeskController extends Controller
         $wahaUrl = rtrim(config('services.waha.url'), '/');
         $wahaKey = config('services.waha.api_key');
         $wahaSession = config('services.waha.session', 'default');
+
+        // ⚡ FIX: hormati WAHA_ENABLED. Sebelumnya panel System Health SELALU menembak
+        // HTTP ke WAHA (timeout 3 detik) walau fitur WA dimatikan -> setiap kali Pembina
+        // membuka Workdesk halaman menunggu ~4 detik. Kalau dimatikan: lewati total.
+        if (! (bool) config('services.waha.enabled', true)) {
+            return [
+                'storage_percent' => $storagePercent,
+                'queue_pending' => $queueCount,
+                'queue_failed' => $failedJobs,
+                'waha_status' => 'disabled',
+            ];
+        }
+
         $wahaStatus = 'offline';
 
         try {

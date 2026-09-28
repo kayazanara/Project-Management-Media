@@ -780,7 +780,7 @@
                                     <span class="text-muted">-</span>
                                 @endif
                             </td>
-                            <td>{{ $task->task_date ?? '-' }}</td>
+                            <td>{{ $task->task_date?->format('d M Y') ?? '-' }}</td>
                             <td class="text-center">
                                 @if($isPembina || $isKetuaMedia)
                                     <a href="{{ route('tasks.edit', $task->id) }}" class="btn btn-warning btn-sm">

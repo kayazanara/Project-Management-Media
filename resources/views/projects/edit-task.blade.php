@@ -36,7 +36,7 @@
 
                 <div class="form-group">
                     <label><strong>Target Tanggal</strong></label>
-                    <input type="date" name="task_date" class="form-control" value="{{ old('task_date', $task->task_date) }}">
+                    <input type="date" name="task_date" class="form-control" value="{{ old('task_date', $task->task_date?->format('Y-m-d')) }}">
                 </div>
 
                 <div class="form-group">
