@@ -182,6 +182,12 @@ class DivisionController extends Controller
 
     public function destroyReport($id)
     {
+        // ⚡ AUDIT (D4): route laporan divisi ada di luar grup middleware dan method ini
+        // tidak punya cek hak akses -> siapa pun bisa menghapus laporan apa pun.
+        if (! auth()->user()->isManager() && ! auth()->user()->isKepalaDivisi()) {
+            abort(403, 'Anda tidak berhak menghapus laporan divisi.');
+        }
+
         $report = DailyReport::findOrFail($id);
         $division = $report->division;
         $report->delete();
@@ -191,6 +197,16 @@ class DivisionController extends Controller
 
     public function storeReport(Request $request, $divisionName)
     {
+        // ⚡ AUDIT (D4): route di luar grup middleware & tanpa cek hak akses -> siapa pun
+        // bisa menambah laporan di divisi mana pun.
+        $user = auth()->user();
+        $namaDivisi = strtolower(trim(str_replace('Tim', '', urldecode($divisionName))));
+
+        if (! $user->isManager()
+            && ! ($user->isKepalaDivisi() && str_contains(strtolower($user->division ?? ''), $namaDivisi))) {
+            abort(403, 'Anda tidak berhak menambah laporan di divisi ini.');
+        }
+
         $decodedDivision = urldecode($divisionName);
 
         $request->validate([

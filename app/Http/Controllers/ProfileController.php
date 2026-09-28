@@ -119,6 +119,12 @@ class ProfileController extends Controller
 
     public function updateJabatan(Request $request, $id)
     {
+        // ⚡ AUDIT (D5): endpoint ini tidak punya cek hak akses sama sekali -> siapa pun yang
+        // login bisa mengubah jabatan user mana pun lewat PATCH /profile/{id}/jabatan.
+        if (! auth()->user()->isManager()) {
+            abort(403, 'Hanya Pembina atau Ketua Media yang bisa mengubah jabatan anggota.');
+        }
+
         $currentUser = auth()->user();
         $userDiv = strtolower(trim($currentUser->division ?? ''));
         $userRole = strtolower(trim($currentUser->role ?? ''));
