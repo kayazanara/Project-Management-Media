@@ -36,12 +36,35 @@ class MonitoringController extends Controller
             'endDate'         => $end,
             'members'         => $this->buildMemberPerformance($start, $end),
             'monthlyTrend'    => $this->buildMonthlyTrend(),
-            'workload'        => $this->buildWorkloadBalance(),
+            // ⚡ FIX: kirim periode supaya kartu Workload Balance ikut filter 7/30/90 hari
+            // (sebelumnya dipanggil tanpa periode sehingga hasilnya identik untuk semua filter)
+            'workload'        => $this->buildWorkloadBalance($start, $end),
             'deadline'        => $this->buildDeadlineAdherence($start, $end),
             'alerts'          => $this->buildAlerts(),
             'divisionSummary' => $this->buildDivisionSummary($start, $end),
             'directory'       => $this->buildTeamDirectory($start, $end),
         ]);
+    }
+
+    // ============================================================
+    // HELPER: KETEPATAN WAKTU
+    // ============================================================
+
+    /**
+     * Apakah task selesai tepat waktu (atau lebih awal)?
+     *
+     * ⚡ FIX: bandingkan TANGGAL-nya saja. Sebelumnya semua tempat memakai
+     * $completedAt <= $taskDate, yaitu membandingkan datetime (mis. 06:00) dengan
+     * tanggal (00:00) sehingga task yang selesai di HARI YANG SAMA selalu dianggap
+     * telat -> on-time rate selalu 0%.
+     */
+    private function isOnTime(ProjectTask $task): bool
+    {
+        if (! $task->task_date || ! $task->completed_at) {
+            return false;
+        }
+
+        return $task->completed_at->toDateString() <= $task->task_date->toDateString();
     }
 
     // ============================================================
@@ -94,17 +117,15 @@ class MonitoringController extends Controller
                         $points += ((float) $task->weight) / count($contributorIds);
                     }
 
-                    // ⚡ FIX: parse task_date jadi Carbon sebelum dibandingkan
                     if ($task->status === 'Completed' && $task->task_date && $task->completed_at) {
                         $completedCount++;
-                        $taskDate = Carbon::parse($task->task_date);
-                        $completedAt = $task->completed_at;
 
-                        if ($completedAt <= $taskDate) {
+                        // ⚡ FIX: pakai helper isOnTime() -> perbandingan per TANGGAL
+                        if ($this->isOnTime($task)) {
                             $onTimeCount++;
                         } else {
                             $lateCount++;
-                            $lateDaysSum += $taskDate->diffInDays($completedAt);
+                            $lateDaysSum += $task->task_date->diffInDays($task->completed_at);
                         }
                     }
                 }
@@ -352,13 +373,11 @@ class MonitoringController extends Controller
                         $points += ((float) $task->weight) / count($contributorIds);
                     }
 
-                    // ⚡ FIX: parse task_date
                     if ($task->status === 'Completed' && $task->task_date && $task->completed_at) {
                         $completedCount++;
-                        $taskDate = Carbon::parse($task->task_date);
-                        $completedAt = $task->completed_at;
 
-                        if ($completedAt <= $taskDate) {
+                        // ⚡ FIX: pakai helper isOnTime() -> perbandingan per TANGGAL
+                        if ($this->isOnTime($task)) {
                             $onTimeCount++;
                         } else {
                             $lateCount++;
@@ -472,7 +491,7 @@ class MonitoringController extends Controller
     // WORKLOAD BALANCE
     // ============================================================
 
-    private function buildWorkloadBalance(): array
+    private function buildWorkloadBalance(Carbon $start, Carbon $end): array
     {
         $users = User::whereIn('division_role', ['ketua_media', 'kepala_divisi', 'anggota'])
             ->where('status', 'Aktif')
@@ -482,15 +501,27 @@ class MonitoringController extends Controller
         $result = [];
 
         foreach ($users as $user) {
-            $activeTasks = ProjectTask::where('assigned_to', $user->id)
-                ->where('status', '!=', 'Completed')
-                ->count();
+            // ⚡ FIX (M2): (1) dibatasi PERIODE terpilih supaya filter 7/30/90 hari berpengaruh,
+            // (2) atribusi pakai KONTRIBUTOR (fallback PIC) supaya konsisten dengan metrik poin.
+            $tasks = ProjectTask::where(function ($q) use ($start, $end) {
+                    $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
+                      ->orWhere(function ($q2) use ($start, $end) {
+                          $q2->whereNull('task_date')
+                             ->whereBetween('created_at', [$start, $end]);
+                      });
+                })
+                ->where(function ($q) use ($user) {
+                    $q->whereHas('contributors', fn ($c) => $c->where('users.id', $user->id))
+                      ->orWhere(function ($q2) use ($user) {
+                          $q2->whereDoesntHave('contributors')
+                             ->where('assigned_to', $user->id);
+                      });
+                })
+                ->get();
 
-            $completedTasks = ProjectTask::where('assigned_to', $user->id)
-                ->where('status', 'Completed')
-                ->count();
-
-            $totalTasks = $activeTasks + $completedTasks;
+            $activeTasks    = $tasks->where('status', '!=', 'Completed')->count();
+            $completedTasks = $tasks->where('status', 'Completed')->count();
+            $totalTasks     = $tasks->count();
             $activeRatio = $totalTasks > 0 ? round(($activeTasks / $totalTasks) * 100) : 0;
 
             if ($totalTasks === 0) {
@@ -554,17 +585,14 @@ class MonitoringController extends Controller
             $onTime = 0; $late = 0; $lateDaysSum = 0;
 
             foreach ($completedTasks as $task) {
-                // ⚡ FIX: parse task_date jadi Carbon
                 if (!$task->task_date || !$task->completed_at) continue;
 
-                $taskDate = Carbon::parse($task->task_date);
-                $completedAt = $task->completed_at;
-
-                if ($completedAt <= $taskDate) {
+                // ⚡ FIX: pakai helper isOnTime() -> perbandingan per TANGGAL
+                if ($this->isOnTime($task)) {
                     $onTime++;
                 } else {
                     $late++;
-                    $lateDaysSum += $taskDate->diffInDays($completedAt);
+                    $lateDaysSum += $task->task_date->diffInDays($task->completed_at);
                 }
             }
 
@@ -640,6 +668,10 @@ class MonitoringController extends Controller
                 ->whereHas('contributors', function ($q) use ($u) {
                     $q->where('users.id', $u->id);
                 })
+                // ⚡ FIX (M4): hanya task yang benar-benar SELESAI yang dianggap "sudah dapat poin".
+                // Sebelumnya cukup punya task berbobot (walau belum dikerjakan) -> alert tidak muncul
+                // padahal orangnya belum menyelesaikan apa pun.
+                ->where('status', 'Completed')
                 ->where('weight', '>', 0)
                 ->exists();
 
@@ -665,16 +697,33 @@ class MonitoringController extends Controller
         $divisions = ['Lapangan', 'Editing', 'Broadcast', 'AI Research'];
 
         foreach ($divisions as $divName) {
-            $memberIds = User::where('division', 'like', "%{$divName}%")->pluck('id');
-            if ($memberIds->isEmpty()) continue;
+            // ⚡ FIX (M5): hanya anggota Aktif + atribusi pakai KONTRIBUTOR (fallback PIC),
+            // konsisten dengan metrik lain (sebelumnya assigned_to saja dan tanpa filter status).
+            $memberIds = User::where('division', 'like', "%{$divName}%")
+                ->where('status', 'Aktif')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
 
-            $thisWeek = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->where('status', 'Completed')
+            if (empty($memberIds)) continue;
+
+            $attribusiDivisi = function ($q) use ($memberIds) {
+                $q->where(function ($w) use ($memberIds) {
+                    $w->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
+                      ->orWhere(function ($w2) use ($memberIds) {
+                          $w2->whereDoesntHave('contributors')
+                             ->whereIn('assigned_to', $memberIds);
+                      });
+                });
+            };
+
+            $thisWeek = ProjectTask::where('status', 'Completed')
+                ->where($attribusiDivisi)
                 ->whereBetween('completed_at', [$thisWeekStart, $thisWeekEnd])
                 ->count();
 
-            $lastWeek = ProjectTask::whereIn('assigned_to', $memberIds)
-                ->where('status', 'Completed')
+            $lastWeek = ProjectTask::where('status', 'Completed')
+                ->where($attribusiDivisi)
                 ->whereBetween('completed_at', [$lastWeekStart, $lastWeekEnd])
                 ->count();
 
@@ -775,13 +824,17 @@ class MonitoringController extends Controller
                     if (empty($contributorIds)) continue;
 
                     if (in_array($u->id, $contributorIds)) {
-                        $totalPoints += ((float) $task->weight) / count($contributorIds);
+                        // ⚡ FIX (M3): poin HANYA dari task yang benar-benar SELESAI.
+                        // Sebelumnya semua task berbobot ikut dihitung -> total poin divisi palsu.
+                        if ($task->status === 'Completed') {
+                            $totalPoints += ((float) $task->weight) / count($contributorIds);
+                        }
 
-                        // ⚡ FIX: parse task_date
                         if ($task->status === 'Completed' && $task->task_date && $task->completed_at) {
                             $totalCompleted++;
-                            $taskDate = Carbon::parse($task->task_date);
-                            if ($task->completed_at <= $taskDate) {
+
+                            // ⚡ FIX: pakai helper isOnTime() -> perbandingan per TANGGAL
+                            if ($this->isOnTime($task)) {
                                 $totalOnTime++;
                             }
                         }
