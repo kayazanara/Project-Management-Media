@@ -271,4 +271,95 @@ class MonitoringTest extends TestCase
         $this->assertNotNull($drop, 'Penurunan divisi harus terdeteksi dari aktivitas KONTRIBUTOR.');
         $this->assertStringContainsString('Minggu lalu: 2', $drop['message']);
     }
+
+    // ==========================================================
+    // FASE 2 — WORKLOAD BALANCE: poin, estimasi beban, ambang overload 65
+    // ==========================================================
+
+    public function test_workload_overload_kalau_poin_periode_mencapai_65(): void
+    {
+        $anggota = $this->anggotaDivisi('Lapangan');
+
+        // 7 task selesai @bobot 10 = 70 poin (>= 65)
+        for ($i = 0; $i < 7; $i++) {
+            $this->buatTask(
+                [$anggota->id],
+                $anggota->id,
+                10,
+                'Completed',
+                null,
+                Carbon::today()->setTime(6, $i)->toDateTimeString()
+            );
+        }
+
+        $w = collect($this->monitoring(['days' => 30])['workload'])->firstWhere('id', $anggota->id);
+
+        $this->assertSame(70, (int) $w['points']);
+        $this->assertSame('overload', $w['status'], 'Poin >= 65 harus berstatus Overload.');
+    }
+
+    public function test_workload_status_seimbang_ringan_dan_idle(): void
+    {
+        $seimbang = $this->anggotaDivisi('Editing');
+        $ringan   = $this->anggotaDivisi('Broadcast');
+        $idle     = User::where('division_role', 'ketua_media')->where('status', 'Aktif')->firstOrFail();
+
+        // 3 task @10 = 30 poin -> Seimbang (20-64)
+        for ($i = 0; $i < 3; $i++) {
+            $this->buatTask(
+                [$seimbang->id],
+                $seimbang->id,
+                10,
+                'Completed',
+                null,
+                Carbon::today()->setTime(7, $i)->toDateTimeString()
+            );
+        }
+
+        // 1 task @5 = 5 poin -> Ringan (< 20)
+        $this->buatTask([$ringan->id], $ringan->id, 5, 'Completed', null, Carbon::today()->setTime(8, 0)->toDateTimeString());
+
+        $workload = collect($this->monitoring(['days' => 30])['workload']);
+
+        $this->assertSame('balanced', $workload->firstWhere('id', $seimbang->id)['status']);
+        $this->assertSame('light', $workload->firstWhere('id', $ringan->id)['status']);
+        $this->assertSame('idle', $workload->firstWhere('id', $idle->id)['status']);
+    }
+
+    public function test_estimasi_beban_menghitung_task_terjadwal_termasuk_yang_belum_selesai(): void
+    {
+        $anggota = $this->anggotaDivisi('AI Research');
+
+        $this->buatTask([$anggota->id], $anggota->id, 10, 'Completed', null, Carbon::today()->setTime(6, 0)->toDateTimeString());
+        $this->buatTask([$anggota->id], $anggota->id, 5, 'Pending');
+
+        $w = collect($this->monitoring(['days' => 30])['workload'])->firstWhere('id', $anggota->id);
+
+        $this->assertSame(15, (int) $w['planned_load'], 'Estimasi beban = semua bobot task yang dijadwalkan di periode.');
+        $this->assertSame(10, (int) $w['points'], 'Poin hanya dari task yang sudah selesai.');
+    }
+
+    public function test_workload_mengurutkan_overload_paling_atas(): void
+    {
+        $overload = $this->anggotaDivisi('Lapangan');
+        $kecil    = $this->anggotaDivisi('Editing');
+
+        for ($i = 0; $i < 7; $i++) {
+            $this->buatTask(
+                [$overload->id],
+                $overload->id,
+                10,
+                'Completed',
+                null,
+                Carbon::today()->setTime(6, $i)->toDateTimeString()
+            );
+        }
+
+        $this->buatTask([$kecil->id], $kecil->id, 5, 'Completed', null, Carbon::today()->setTime(9, 0)->toDateTimeString());
+
+        $workload = $this->monitoring(['days' => 30])['workload'];
+
+        $this->assertSame('overload', $workload[0]['status'], 'Baris pertama harus yang Overload.');
+        $this->assertSame($overload->id, $workload[0]['id']);
+    }
 }

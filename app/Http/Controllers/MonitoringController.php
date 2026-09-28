@@ -13,6 +13,12 @@ use Illuminate\Support\Facades\Auth;
 
 class MonitoringController extends Controller
 {
+    /**
+     * ⚡ FASE 2: ambang status Workload Balance berdasarkan TOTAL POIN periode terpilih.
+     */
+    const OVERLOAD_POINTS = 65;      // >= 65 poin  -> Overload
+    const BALANCED_MIN_POINTS = 20;  // 20-64 poin  -> Seimbang, di bawahnya Ringan
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -39,6 +45,8 @@ class MonitoringController extends Controller
             // ⚡ FIX: kirim periode supaya kartu Workload Balance ikut filter 7/30/90 hari
             // (sebelumnya dipanggil tanpa periode sehingga hasilnya identik untuk semua filter)
             'workload'        => $this->buildWorkloadBalance($start, $end),
+            'overloadPoints'  => self::OVERLOAD_POINTS,
+            'balancedMin'     => self::BALANCED_MIN_POINTS,
             'deadline'        => $this->buildDeadlineAdherence($start, $end),
             'alerts'          => $this->buildAlerts(),
             'divisionSummary' => $this->buildDivisionSummary($start, $end),
@@ -517,6 +525,7 @@ class MonitoringController extends Controller
                              ->where('assigned_to', $user->id);
                       });
                 })
+                ->with(['contributors:id'])
                 ->get();
 
             $activeTasks    = $tasks->where('status', '!=', 'Completed')->count();
@@ -524,11 +533,35 @@ class MonitoringController extends Controller
             $totalTasks     = $tasks->count();
             $activeRatio = $totalTasks > 0 ? round(($activeTasks / $totalTasks) * 100) : 0;
 
+            // ⚡ FASE 2:
+            //   $points      = total poin periode ini (HANYA task selesai, dibagi rata ke kontributor)
+            //   $plannedLoad = estimasi beban = total bobot task yang DIJADWALKAN di periode ini
+            //                  (termasuk yang belum selesai)
+            $points = 0;
+            $plannedLoad = 0;
+
+            foreach ($tasks as $task) {
+                $contributorIds = $task->contributors->pluck('id')->toArray();
+                if (empty($contributorIds) && $task->assigned_to) {
+                    $contributorIds = [(int) $task->assigned_to];
+                }
+                if (empty($contributorIds)) {
+                    continue;
+                }
+
+                $plannedLoad += (float) $task->weight;
+
+                if ($task->status === 'Completed') {
+                    $points += ((float) $task->weight) / count($contributorIds);
+                }
+            }
+
+            // ⚡ FASE 2: status ditentukan dari TOTAL POIN periode ini (bukan rasio task aktif).
             if ($totalTasks === 0) {
                 $status = 'idle'; $statusLabel = 'Idle'; $statusColor = 'secondary'; $statusIcon = 'fa-circle';
-            } elseif ($activeRatio >= 70) {
+            } elseif ($points >= self::OVERLOAD_POINTS) {
                 $status = 'overload'; $statusLabel = 'Overload'; $statusColor = 'danger'; $statusIcon = 'fa-exclamation-triangle';
-            } elseif ($activeRatio >= 30) {
+            } elseif ($points >= self::BALANCED_MIN_POINTS) {
                 $status = 'balanced'; $statusLabel = 'Seimbang'; $statusColor = 'success'; $statusIcon = 'fa-check-circle';
             } else {
                 $status = 'light'; $statusLabel = 'Ringan'; $statusColor = 'info'; $statusIcon = 'fa-info-circle';
@@ -544,6 +577,8 @@ class MonitoringController extends Controller
                 'completed_tasks' => $completedTasks,
                 'total_tasks'     => $totalTasks,
                 'active_ratio'    => $activeRatio,
+                'points'          => (int) round($points),
+                'planned_load'    => (int) round($plannedLoad),
                 'status'          => $status,
                 'status_label'    => $statusLabel,
                 'status_color'    => $statusColor,
@@ -551,9 +586,13 @@ class MonitoringController extends Controller
             ];
         }
 
+        // ⚡ FASE 2: Overload paling atas, lalu poin terbesar
         usort($result, function ($a, $b) {
-            $order = ['overload' => 1, 'idle' => 2, 'balanced' => 3, 'light' => 4];
-            return ($order[$a['status']] ?? 99) <=> ($order[$b['status']] ?? 99);
+            $order = ['overload' => 1, 'balanced' => 2, 'light' => 3, 'idle' => 4];
+
+            $statusCompare = ($order[$a['status']] ?? 99) <=> ($order[$b['status']] ?? 99);
+
+            return $statusCompare !== 0 ? $statusCompare : ($b['points'] <=> $a['points']);
         });
 
         return $result;

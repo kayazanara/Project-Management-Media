@@ -373,8 +373,13 @@
             </div>
             <div class="card-body">
                 <div class="alert alert-light border small mb-3">
-                    <strong>Overload</strong> ≥ 70% task aktif • <strong>Seimbang</strong> 30-69% •
-                    <strong>Ringan</strong> &lt; 30% • <strong>Idle</strong> tanpa task.
+                    Status dihitung dari <strong>total poin periode ini</strong>
+                    ({{ $filterDays }} hari, hanya task yang sudah selesai):
+                    <strong>Overload</strong> ≥ {{ $overloadPoints }} poin •
+                    <strong>Seimbang</strong> {{ $balancedMin }}–{{ $overloadPoints - 1 }} •
+                    <strong>Ringan</strong> &lt; {{ $balancedMin }} • <strong>Idle</strong> tanpa task.<br>
+                    <strong>Estimasi Beban</strong> = total bobot task yang dijadwalkan pada periode ini
+                    (termasuk yang belum selesai).
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
@@ -382,6 +387,8 @@
                             <tr>
                                 <th>Nama</th>
                                 <th>Divisi</th>
+                                <th class="text-center">Poin</th>
+                                <th class="text-center">Estimasi Beban</th>
                                 <th class="text-center">Task Aktif</th>
                                 <th class="text-center">Task Selesai</th>
                                 <th class="text-center">Total</th>
@@ -408,6 +415,14 @@
                                         </div>
                                     </td>
                                     <td><span class="badge badge-secondary">{{ $w['division'] }}</span></td>
+                                    <td class="text-center">
+                                        <strong class="{{ $w['points'] >= $overloadPoints ? 'text-danger' : 'text-gray-800' }}">
+                                            {{ $w['points'] }}
+                                        </strong>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge badge-light border">{{ $w['planned_load'] }} bobot</span>
+                                    </td>
                                     <td class="text-center"><strong>{{ $w['active_tasks'] }}</strong></td>
                                     <td class="text-center text-success">{{ $w['completed_tasks'] }}</td>
                                     <td class="text-center">{{ $w['total_tasks'] }}</td>
@@ -426,7 +441,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7" class="text-center text-muted py-4">Belum ada data.</td></tr>
+                                <tr><td colspan="9" class="text-center text-muted py-4">Belum ada data.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
