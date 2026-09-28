@@ -59,11 +59,6 @@ class ProjectController extends Controller
 
     /**
      * ⚡ Ambil daftar penerima notifikasi untuk sebuah project.
-     *
-     * Aturan:
-     *  - Hanya anggota project (termasuk Kadiv yang terlibat).
-     *  - Skip Pembina & Ketua Media (mereka bukan target notif operasional).
-     *  - Skip user yang sedang melakukan aksi (opsional, agar tidak notif diri sendiri).
      */
     private function getProjectRecipients(Project $project, ?int $excludeUserId = null)
     {
@@ -262,6 +257,9 @@ class ProjectController extends Controller
 
         $availableActions = $this->workflow->getAvailableActions($project, Auth::user());
 
+        // ⚡ FIX: data kesiapan rilis untuk ditampilkan di view
+        $releaseReadiness = $this->workflow->releaseReadiness($project);
+
         $latestReviewRequest = $project->revisions()
             ->where('type', 'review_request')
             ->first();
@@ -278,6 +276,7 @@ class ProjectController extends Controller
             'progress' => $progress,
             'users' => $users,
             'availableActions' => $availableActions,
+            'releaseReadiness' => $releaseReadiness,
             'latestReviewRequest' => $latestReviewRequest,
             'latestRevision' => $latestRevision,
             'projectContentsCount' => $projectContentsCount,
@@ -383,8 +382,6 @@ class ProjectController extends Controller
 
     // ============================================================
     // WORKFLOW: 1. SUBMIT TASK REVIEW
-    // ⚡ FIX: Pembina juga bisa (antisipasi Ketua Media absent)
-    // ⚡ FIX: Skip WA kalau yang submit adalah Pembina
     // ============================================================
 
     public function submitTaskReview($id)
@@ -392,7 +389,6 @@ class ProjectController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
-        // ⚡ FIX: Ketua Media ATAU Pembina bisa submit
         if (!$user->isKetuaMedia() && !$user->isPembina()) {
             return back()->with('error', 'Hanya Ketua Media atau Pembina Media yang bisa ajukan task review.');
         }
@@ -408,8 +404,6 @@ class ProjectController extends Controller
 
         $project->update(['status' => Project::STATUS_TASK_REVIEW]);
 
-        // ⚡ FIX: Skip WA kalau yang submit adalah Pembina sendiri
-        //    (notif hanya dikirim kalau Ketua Media yang submit)
         if ($user->isKetuaMedia()) {
             $pembinaUsers = User::where('division_role', 'pembina')
                 ->where('status', 'Aktif')
@@ -440,6 +434,7 @@ class ProjectController extends Controller
 
     // ============================================================
     // WORKFLOW: 2. SUBMIT SCORING
+    // ⚡ FIX: Izinkan edit scoring saat status Task Review ATAU Scoring
     // ============================================================
 
     public function submitScoring(Request $request, $id)
@@ -451,8 +446,9 @@ class ProjectController extends Controller
             return back()->with('error', 'Hanya Pembina Media yang bisa melakukan scoring.');
         }
 
-        if ($project->status !== Project::STATUS_TASK_REVIEW) {
-            return back()->with('error', 'Project tidak dalam tahap Task Review.');
+        // ⚡ FIX: izinkan saat Task Review (submit awal) atau Scoring (edit)
+        if (!in_array($project->status, [Project::STATUS_TASK_REVIEW, Project::STATUS_SCORING], true)) {
+            return back()->with('error', 'Project tidak dalam tahap Task Review atau Scoring.');
         }
 
         $request->validate([
@@ -470,19 +466,25 @@ class ProjectController extends Controller
             if ($task) {
                 $task->update([
                     'weight' => $taskData['weight'],
-                    'is_approved' => isset($taskData['is_approved']) && $taskData['is_approved'] ? true : false,
+                    'is_approved' => !empty($taskData['is_approved']),
                     'scored_at' => now(),
                 ]);
             }
         }
 
-        $project->update([
-            'status' => Project::STATUS_SCORING,
-            'scored_at' => now(),
-        ]);
+        // Ubah status hanya jika sebelumnya masih Task Review
+        if ($project->status === Project::STATUS_TASK_REVIEW) {
+            $project->update([
+                'status' => Project::STATUS_SCORING,
+                'scored_at' => now(),
+            ]);
+            $message = 'Scoring berhasil disimpan. Siap dirilis!';
+        } else {
+            $project->update(['scored_at' => now()]);
+            $message = 'Scoring berhasil diperbarui.';
+        }
 
-        return redirect()->route('projects.show', $id)
-            ->with('success', 'Scoring berhasil disimpan. Siap dirilis!');
+        return redirect()->route('projects.show', $id)->with('success', $message);
     }
 
     // ============================================================
@@ -503,7 +505,11 @@ class ProjectController extends Controller
         }
 
         if (!$this->workflow->isReadyToRelease($project)) {
-            return back()->with('error', 'Semua task harus di-scoring & di-approve sebelum rilis.');
+            $r = $this->workflow->releaseReadiness($project);
+            return back()->with('error',
+                "Belum bisa rilis. Total task: {$r['total']}, di-scoring: {$r['scored']}, di-approve: {$r['approved']}. " .
+                "Silakan klik tombol 'Edit Scoring' untuk melengkapi."
+            );
         }
 
         $project->update([
@@ -511,7 +517,6 @@ class ProjectController extends Controller
             'released_at' => now(),
         ]);
 
-        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv)
         $recipients = $this->getProjectRecipients($project, $user->id);
 
         $deadlineStr = $project->deadline
@@ -636,7 +641,6 @@ class ProjectController extends Controller
             'approved_by_ketua_at' => null,
         ]);
 
-        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv)
         $recipients = $this->getProjectRecipients($project, $user->id);
 
         $this->notifyUsers(
@@ -750,7 +754,6 @@ class ProjectController extends Controller
             'is_overdue' => false,
         ]);
 
-        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv + semua Pembina)
         $recipients = $this->getProjectRecipients($project, $user->id);
 
         $this->notifyUsers(
@@ -835,7 +838,6 @@ class ProjectController extends Controller
 
         $project->update($updateData);
 
-        // ⚡ FIX: hanya anggota project (tanpa semua Kadiv)
         $recipients = $this->getProjectRecipients($project, $user->id);
 
         $url = route('projects.show', $project->id);

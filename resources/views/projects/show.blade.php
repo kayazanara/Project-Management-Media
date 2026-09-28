@@ -9,7 +9,12 @@
         $isKetuaMedia = $user->isKetuaMedia();
         $isPembina = $user->isPembina();
 
-        // ⚡ NEW: Cek apakah user boleh batalkan complete
+        // Fallback kalau controller tidak mengirim $releaseReadiness
+        if (!isset($releaseReadiness)) {
+            $releaseReadiness = app(\App\Services\ProjectWorkflowService::class)->releaseReadiness($project);
+        }
+
+        // ⚡ Cek apakah user boleh batalkan complete
         $canReopen = false;
         if ($project->status === 'Completed') {
             if ($isManager) {
@@ -111,44 +116,44 @@
             </div>
             <div class="card-body">
 
-                {{-- 1. PLANNING — ⚡ FIX: Pembina juga bisa submit (antisipasi Ketua Media absent) --}}
-            @if($project->status === 'Planning')
-                <div class="text-center py-3">
-                    <i class="fas fa-clipboard-list fa-3x text-secondary mb-3"></i>
-                    <h5>Tahap Planning</h5>
-                    <p class="text-muted mb-3">
-                        Project baru dibuat. Silakan susun task yang perlu dikerjakan.
-                    </p>
+                {{-- 1. PLANNING --}}
+                @if($project->status === 'Planning')
+                    <div class="text-center py-3">
+                        <i class="fas fa-clipboard-list fa-3x text-secondary mb-3"></i>
+                        <h5>Tahap Planning</h5>
+                        <p class="text-muted mb-3">
+                            Project baru dibuat. Silakan susun task yang perlu dikerjakan.
+                        </p>
 
-                    @if($isKetuaMedia || $isPembina)
-                        @php $taskCount = $project->tasks->count(); @endphp
+                        @if($isKetuaMedia || $isPembina)
+                            @php $taskCount = $project->tasks->count(); @endphp
 
-                        @if($taskCount > 0)
-                            <form action="{{ route('projects.submitTaskReview', $project->id) }}" method="POST" class="d-inline">
-                                @csrf
-                                @method('PATCH')
-                                <button type="submit" class="btn btn-primary"
-                                        onclick="return confirm('Ajukan task ke tahap Task Review?')">
-                                    <i class="fas fa-paper-plane mr-1"></i> Ajukan ke Task Review ({{ $taskCount }} Task)
-                                </button>
-                            </form>
-                        @else
-                            <div class="alert alert-info small d-inline-block mb-0">
-                                <i class="fas fa-info-circle mr-1"></i>
-                                Susun minimal 1 task dulu sebelum bisa diajukan.
-                            </div>
+                            @if($taskCount > 0)
+                                <form action="{{ route('projects.submitTaskReview', $project->id) }}" method="POST" class="d-inline">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="btn btn-primary"
+                                            onclick="return confirm('Ajukan task ke tahap Task Review?')">
+                                        <i class="fas fa-paper-plane mr-1"></i> Ajukan ke Task Review ({{ $taskCount }} Task)
+                                    </button>
+                                </form>
+                            @else
+                                <div class="alert alert-info small d-inline-block mb-0">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Susun minimal 1 task dulu sebelum bisa diajukan.
+                                </div>
+                            @endif
+
+                            @if($isPembina && !$isKetuaMedia)
+                                <p class="text-muted small mt-2 mb-0">
+                                    <i class="fas fa-user-shield mr-1"></i>
+                                    Anda login sebagai <strong>Pembina</strong>. Tombol ini untuk menggantikan Ketua Media
+                                    jika sedang berhalangan. Setelah submit, Anda bisa langsung lanjut ke tahap <strong>Scoring</strong>.
+                                </p>
+                            @endif
                         @endif
-
-                        @if($isPembina && !$isKetuaMedia)
-                            <p class="text-muted small mt-2 mb-0">
-                                <i class="fas fa-user-shield mr-1"></i>
-                                Anda login sebagai <strong>Pembina</strong>. Tombol ini untuk menggantikan Ketua Media
-                                jika sedang berhalangan. Setelah submit, Anda bisa langsung lanjut ke tahap <strong>Scoring</strong>.
-                            </p>
-                        @endif
-                    @endif
-                </div>
-            @endif
+                    </div>
+                @endif
 
                 {{-- 2. TASK REVIEW --}}
                 @if($project->status === 'Task Review')
@@ -176,7 +181,42 @@
                         <p class="text-muted mb-3">
                             Scoring selesai. Rilis project untuk memulai pengerjaan tim.
                         </p>
+
+                        {{-- ⚡ FIX: Peringatan kesiapan rilis (hanya untuk Pembina) --}}
+                        @if($isPembina && !$releaseReadiness['ready'])
+                            <div class="alert alert-warning text-left d-inline-block mb-3" style="max-width: 640px;">
+                                <h6 class="font-weight-bold mb-2">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                    Belum Siap Rilis
+                                </h6>
+                                <div class="row text-center mb-2">
+                                    <div class="col-4">
+                                        <div class="h5 mb-0 font-weight-bold">{{ $releaseReadiness['total'] }}</div>
+                                        <small class="text-muted">Total Task</small>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="h5 mb-0 font-weight-bold text-info">{{ $releaseReadiness['scored'] }}</div>
+                                        <small class="text-muted">Di-scoring</small>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="h5 mb-0 font-weight-bold text-success">{{ $releaseReadiness['approved'] }}</div>
+                                        <small class="text-muted">Di-approve</small>
+                                    </div>
+                                </div>
+                                <small class="text-muted d-block">
+                                    Masih ada task yang belum di-scoring atau belum di-approve.
+                                    Klik <strong>Edit Scoring</strong> untuk melengkapi.
+                                </small>
+                            </div>
+                            <br>
+                        @endif
+
                         @if($isPembina)
+                            {{-- ⚡ FIX: Tombol Edit Scoring --}}
+                            <button class="btn btn-warning mb-2" data-toggle="modal" data-target="#scoringModal">
+                                <i class="fas fa-edit mr-1"></i> Edit Scoring
+                            </button>
+                            <br>
                             <form action="{{ route('projects.release', $project->id) }}" method="POST" class="d-inline">
                                 @csrf
                                 @method('PATCH')
@@ -845,51 +885,66 @@
     </div>
 
     {{-- Scoring Modal --}}
-    @if($isPembina && $project->status === 'Task Review')
+    {{-- ⚡ FIX: Modal dirender pada status Task Review ATAU Scoring --}}
+    @if($isPembina && in_array($project->status, ['Task Review', 'Scoring']))
     <div class="modal fade" id="scoringModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <form action="{{ route('projects.submitScoring', $project->id) }}" method="POST" class="modal-content">
                 @csrf @method('PATCH')
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title font-weight-bold"><i class="fas fa-star mr-1"></i> Scoring Task</h5>
+                    <h5 class="modal-title font-weight-bold">
+                        <i class="fas fa-star mr-1"></i>
+                        {{ $project->status === 'Scoring' ? 'Edit Scoring Task' : 'Scoring Task' }}
+                    </h5>
                     <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
                 </div>
                 <div class="modal-body">
                     <p class="text-muted">Berikan bobot (min 1, tanpa batas max) & approve setiap task.</p>
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th>Task</th>
-                                <th width="15%">Bobot</th>
-                                <th width="10%">Approve</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($project->tasks as $idx => $task)
+
+                    @if($project->tasks->count() === 0)
+                        <div class="alert alert-warning mb-0">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                            Belum ada task untuk di-scoring.
+                        </div>
+                    @else
+                        <table class="table table-sm">
+                            <thead>
                                 <tr>
-                                    <td>
-                                        {{ $task->title }}
-                                        <input type="hidden" name="tasks[{{ $idx }}][id]" value="{{ $task->id }}">
-                                    </td>
-                                    <td>
-                                        <input type="number" name="tasks[{{ $idx }}][weight]"
-                                               class="form-control form-control-sm"
-                                               min="1" value="{{ $task->weight ?: 5 }}" required>
-                                    </td>
-                                    <td class="text-center">
-                                        <input type="hidden" name="tasks[{{ $idx }}][is_approved]" value="0">
-                                        <input type="checkbox" name="tasks[{{ $idx }}][is_approved]" value="1"
-                                               {{ $task->is_approved ? 'checked' : '' }}
-                                               style="width:20px;height:20px;">
-                                    </td>
+                                    <th>Task</th>
+                                    <th width="15%">Bobot</th>
+                                    <th width="10%">Approve</th>
                                 </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach($project->tasks as $idx => $task)
+                                    <tr>
+                                        <td>
+                                            {{ $task->title }}
+                                            <input type="hidden" name="tasks[{{ $idx }}][id]" value="{{ $task->id }}">
+                                        </td>
+                                        <td>
+                                            <input type="number" name="tasks[{{ $idx }}][weight]"
+                                                   class="form-control form-control-sm"
+                                                   min="1" value="{{ $task->weight ?: 5 }}" required>
+                                        </td>
+                                        <td class="text-center">
+                                            <input type="hidden" name="tasks[{{ $idx }}][is_approved]" value="0">
+                                            <input type="checkbox" name="tasks[{{ $idx }}][is_approved]" value="1"
+                                                   {{ $task->is_approved ? 'checked' : '' }}
+                                                   style="width:20px;height:20px;">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    @endif
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-primary btn-sm">Simpan Scoring</button>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-save mr-1"></i>
+                        {{ $project->status === 'Scoring' ? 'Update Scoring' : 'Simpan Scoring' }}
+                    </button>
                 </div>
             </form>
         </div>
