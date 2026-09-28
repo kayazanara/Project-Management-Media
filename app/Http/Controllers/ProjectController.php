@@ -289,6 +289,16 @@ class ProjectController extends Controller
 
     public function storeTask(Request $request, $id)
     {
+        // ⚡ AUDIT (D7): satu-satunya method alur yang belum punya cek peran -> anggota biasa
+        // bisa menambah task ke project mana pun. Kini: Pembina/Ketua Media, atau anggota
+        // yang memang terlibat di project tersebut.
+        $project = Project::findOrFail($id);
+        $user = Auth::user();
+
+        if (! $user->isManager() && ! $project->users()->where('users.id', $user->id)->exists()) {
+            return back()->with('error', 'Anda tidak berhak menambah task di project ini.');
+        }
+
         $request->validate([
             'title' => 'required|string|max:255',
             'assigned_to' => 'nullable|exists:users,id',
@@ -314,7 +324,22 @@ class ProjectController extends Controller
 
     public function toggleTask(Request $request, $id)
     {
+        // ⚡ AUDIT (D7): route ini terbuka untuk semua user login dan dulu TANPA cek hak akses
+        // -> siapa pun bisa menandai task siapa pun jadi Selesai (dan otomatis memberi poin).
+        // Sekarang: hanya PIC/kontributor task tersebut, atau Pembina/Ketua Media.
+        $user = Auth::user();
         $task = ProjectTask::findOrFail($id);
+
+        // ⚡ AUDIT (D7): hanya PIC/kontributor task ini, atau Pembina/Ketua Media.
+        // Sebelumnya siapa pun yang login bisa menandai task siapa pun jadi Selesai
+        // (dan itu otomatis memberi poin).
+        $boleh = $user->isManager()
+            || (int) $task->assigned_to === (int) $user->id
+            || $task->contributors()->where('users.id', $user->id)->exists();
+
+        if (! $boleh) {
+            abort(403, 'Hanya PIC/kontributor task ini (atau Pembina/Ketua Media) yang bisa mengubah statusnya.');
+        }
 
         if ($task->status == 'Completed') {
             $task->status = 'Pending';
@@ -872,6 +897,9 @@ class ProjectController extends Controller
 
     public function updateProjectStatus(Request $request, $id)
     {
+        // ⚡ CATATAN AUDIT (D7): method ini ternyata STUB — tidak mengubah apa pun
+        // (hanya mengembalikan pesan "gunakan tombol workflow"). Jadi tidak ada lubang
+        // hak akses di sini; guard tambahan tidak diperlukan.
         return back()->with('error', 'Gunakan tombol aksi workflow di halaman detail project.');
     }
 }

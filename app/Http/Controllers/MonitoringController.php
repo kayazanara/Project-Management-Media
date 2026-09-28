@@ -564,6 +564,46 @@ class MonitoringController extends Controller
         return $result;
     }
 
+    /**
+     * ⚡ PERF: poin per anggota per bulan dihitung dengan SATU query saja.
+     * Sebelumnya: 1 query per anggota × per bulan (13 anggota × 6 bulan = 78 query) dan
+     * dipanggil dua kali (tren bulanan + sparkline direktori) -> ~150 query per halaman.
+     *
+     * @return array<int, array<string, float>>  [user_id][Y-m] => poin
+     */
+    private function monthlyPointsMap(Carbon $mulai, Carbon $selesai): array
+    {
+        $map = [];
+
+        $tugas = ProjectTask::where('status', 'Completed')
+            ->whereNotNull('completed_at')
+            ->whereBetween('completed_at', [$mulai, $selesai])
+            ->with('contributors:id')
+            ->get();
+
+        foreach ($tugas as $t) {
+            $ids = $t->contributors->pluck('id')->toArray();
+
+            if (empty($ids) && $t->assigned_to) {
+                $ids = [(int) $t->assigned_to];
+            }
+
+            if (empty($ids)) {
+                continue;
+            }
+
+            $poin = ((float) $t->weight) / count($ids);
+            $bulan = $t->completed_at->format('Y-m');
+
+            foreach ($ids as $uid) {
+                $uid = (int) $uid;
+                $map[$uid][$bulan] = ($map[$uid][$bulan] ?? 0) + $poin;
+            }
+        }
+
+        return $map;
+    }
+
     // ============================================================
     // TREND BULANAN (6 bulan)
     // ============================================================
@@ -1003,12 +1043,13 @@ class MonitoringController extends Controller
             $totalPoints = 0; $totalCompleted = 0; $totalOnTime = 0;
 
             foreach ($members as $u) {
+                // ⚡ FIX (B2): basis sama dengan Poin (completed_at dalam periode, atau masih aktif)
                 $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                        $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
-                          ->orWhere(function ($q2) use ($start, $end) {
-                              $q2->whereNull('task_date')
-                                 ->whereBetween('created_at', [$start, $end]);
-                          });
+                        $q->where(function ($q2) use ($start, $end) {
+                            $q2->where('status', 'Completed')
+                               ->whereNotNull('completed_at')
+                               ->whereBetween('completed_at', [$start, $end]);
+                        })->orWhere('status', '!=', 'Completed');
                     })
                     ->whereHas('contributors', function ($q) use ($u) {
                         $q->where('users.id', $u->id);
