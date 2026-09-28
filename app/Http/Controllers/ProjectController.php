@@ -295,6 +295,8 @@ class ProjectController extends Controller
             'task_date' => 'nullable|date',
             'description' => 'nullable|string',
             'division' => 'nullable|string',
+            // ⚡ FASE 2: bobot/poin task bisa langsung diisi saat task dibebankan
+            'weight' => 'nullable|integer|min:0',
         ]);
 
         ProjectTask::create([
@@ -303,6 +305,7 @@ class ProjectController extends Controller
             'title' => $request->title,
             'description' => $request->description,
             'task_date' => $request->task_date,
+            'weight' => $request->weight ?? 0,
             'status' => 'Pending',
         ]);
 
@@ -367,6 +370,8 @@ class ProjectController extends Controller
             'assigned_to' => 'nullable|exists:users,id',
             'task_date' => 'nullable|date',
             'description' => 'nullable|string',
+            // ⚡ FASE 2: bobot/poin bisa disesuaikan kapan saja lewat edit task
+            'weight' => 'nullable|integer|min:0',
         ]);
 
         $task = ProjectTask::findOrFail($id);
@@ -375,6 +380,7 @@ class ProjectController extends Controller
             'assigned_to' => $request->assigned_to,
             'task_date' => $request->task_date,
             'description' => $request->description,
+            'weight' => $request->weight ?? 0,
         ]);
 
         return redirect()->route('projects.show', $task->project_id)->with('success', 'Task berhasil diperbarui!');

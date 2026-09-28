@@ -871,6 +871,12 @@
                         <label>Target Tanggal</label>
                         <input type="date" name="task_date" class="form-control">
                     </div>
+                    {{-- ⚡ FASE 2: bobot/poin bisa diisi langsung saat task dibebankan --}}
+                    <div class="form-group">
+                        <label>Bobot / Poin Task</label>
+                        <input type="number" name="weight" class="form-control" min="0" value="{{ old('weight', 0) }}">
+                        <small class="text-muted">Poin untuk anggota saat task ini selesai (dibagi rata ke kontributor). 0 = tanpa poin.</small>
+                    </div>
                     <div class="form-group">
                         <label>Deskripsi</label>
                         <textarea name="description" class="form-control" rows="2"></textarea>

@@ -151,18 +151,58 @@ class MonitoringTest extends TestCase
     // M2 — WORKLOAD BALANCE
     // ==========================================================
 
-    public function test_workload_balance_mengikuti_filter_periode(): void
+    public function test_tugas_yang_dibebankan_selalu_masuk_estimasi_beban(): void
     {
         $anggota = $this->anggotaDivisi('Broadcast');
 
-        // Task terjadwal 60 hari lalu, belum selesai
+        // (a) tugas lama (60 hari lalu) belum selesai, bobot 5
         $this->buatTask([$anggota->id], $anggota->id, 5, 'Pending', Carbon::today()->subDays(60)->toDateString());
+        // (b) tugas bertanggal KE DEPAN (30 hari lagi), bobot 7 -> dulu tidak muncul sama sekali
+        $this->buatTask([$anggota->id], $anggota->id, 7, 'Pending', Carbon::today()->addDays(30)->toDateString());
 
         $w7  = collect($this->monitoring(['days' => 7])['workload'])->firstWhere('id', $anggota->id);
         $w90 = collect($this->monitoring(['days' => 90])['workload'])->firstWhere('id', $anggota->id);
 
-        $this->assertSame(0, (int) $w7['total_tasks'], 'Task 60 hari lalu tidak boleh masuk periode 7 hari.');
-        $this->assertSame(1, (int) $w90['total_tasks'], 'Task 60 hari lalu harus masuk periode 90 hari.');
+        // ⚡ Beban & tugas aktif tidak lagi dibatasi jendela periode
+        $this->assertSame(2, (int) $w7['active_tasks'], 'Tugas yang dibebankan harus terlihat walau tanggalnya jauh/ke depan.');
+        $this->assertSame(12, (int) $w7['planned_load'], 'Estimasi beban = 5 + 7 bobot.');
+        $this->assertSame(12, (int) $w90['planned_load']);
+    }
+
+    public function test_poin_dihitung_dari_tanggal_selesai_bukan_tanggal_rencana(): void
+    {
+        $anggota = $this->anggotaDivisi('Lapangan');
+
+        // Direncanakan 60 hari lalu, TAPI diselesaikan hari ini -> poin harus muncul di periode 7 hari
+        $task = $this->buatTask([$anggota->id], $anggota->id, 10, 'Pending', Carbon::today()->subDays(60)->toDateString());
+        $task->update(['status' => 'Completed', 'completed_at' => now()]);
+
+        $w = collect($this->monitoring(['days' => 7])['workload'])->firstWhere('id', $anggota->id);
+
+        $this->assertSame(1, (int) $w['completed_tasks'], 'Task selesai hari ini harus masuk periode 7 hari.');
+        $this->assertSame(10, (int) $w['points'], 'Poin pakai tanggal SELESAI, bukan tanggal rencana.');
+        $this->assertSame(0, (int) $w['planned_load'], 'Task yang sudah selesai tidak lagi jadi beban berjalan.');
+    }
+
+    public function test_bobot_task_bisa_diisi_langsung_saat_task_dibebankan(): void
+    {
+        $anggota = $this->anggotaDivisi('Editing');
+
+        $contoh    = $this->buatTask([$anggota->id], $anggota->id, 5, 'Pending');
+        $projectId = $contoh->project_id;
+
+        $this->actingAs($this->pembina())
+            ->post("/projects/{$projectId}/tasks", [
+                'title'       => 'Task dengan bobot langsung',
+                'assigned_to' => $anggota->id,
+                'task_date'   => Carbon::today()->toDateString(),
+                'weight'      => 7,
+            ])
+            ->assertRedirect();
+
+        $task = ProjectTask::where('title', 'Task dengan bobot langsung')->firstOrFail();
+
+        $this->assertSame(7, (int) $task->weight, 'Bobot harus tersimpan saat task dibebankan.');
     }
 
     public function test_workload_menghitung_kontributor_bukan_hanya_pic(): void
@@ -336,7 +376,7 @@ class MonitoringTest extends TestCase
 
         $w = collect($this->monitoring(['days' => 30])['workload'])->firstWhere('id', $anggota->id);
 
-        $this->assertSame(15, (int) $w['planned_load'], 'Estimasi beban = semua bobot task yang dijadwalkan di periode.');
+        $this->assertSame(5, (int) $w['planned_load'], 'Estimasi beban = bobot tugas yang DIBEBANKAN & belum selesai.');
         $this->assertSame(10, (int) $w['points'], 'Poin hanya dari task yang sudah selesai.');
     }
 

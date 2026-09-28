@@ -96,14 +96,10 @@ class MonitoringController extends Controller
      */
     private function buildPointHistory(User $user, Carbon $start, Carbon $end): array
     {
+        // ⚡ FASE 1: riwayat poin dihitung dari tanggal SELESAI (completed_at),
+        // bukan tanggal rencana — supaya konsisten dengan kartu lain.
         $tasks = ProjectTask::where('status', 'Completed')
-            ->where(function ($q) use ($start, $end) {
-                $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
-                  ->orWhere(function ($q2) use ($start, $end) {
-                      $q2->whereNull('task_date')
-                         ->whereBetween('created_at', [$start, $end]);
-                  });
-            })
+            ->whereBetween('completed_at', [$start, $end])
             ->where(function ($q) use ($user) {
                 $q->whereHas('contributors', fn ($c) => $c->where('users.id', $user->id))
                   ->orWhere(function ($q2) use ($user) {
@@ -265,7 +261,9 @@ class MonitoringController extends Controller
 
                     // ⚡ FIX: poin HANYA untuk task yang benar-benar SELESAI.
                     // Sebelumnya poin diberikan begitu bobot diisi, walau task masih Pending.
-                    if ($task->status === 'Completed') {
+                    // ⚡ FASE 1: dihitung pada periode task itu SELESAI (basis completed_at),
+                    // bukan pada tanggal rencananya.
+                    if ($task->status === 'Completed' && $task->completed_at && $task->completed_at->between($start, $end)) {
                         $points += ((float) $task->weight) / count($contributorIds);
                     }
 
@@ -524,7 +522,8 @@ class MonitoringController extends Controller
 
                     // ⚡ FIX: poin HANYA untuk task yang benar-benar SELESAI
                     // (sebelumnya poin diberikan begitu bobot diisi, walau task masih Pending)
-                    if ($task->status === 'Completed') {
+                    // ⚡ FASE 1: dihitung pada periode task SELESAI (basis completed_at)
+                    if ($task->status === 'Completed' && $task->completed_at && $task->completed_at->between($start, $end)) {
                         $points += ((float) $task->weight) / count($contributorIds);
                     }
 
@@ -656,38 +655,41 @@ class MonitoringController extends Controller
         $result = [];
 
         foreach ($users as $user) {
-            // ⚡ FIX (M2): (1) dibatasi PERIODE terpilih supaya filter 7/30/90 hari berpengaruh,
-            // (2) atribusi pakai KONTRIBUTOR (fallback PIC) supaya konsisten dengan metrik poin.
-            $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                    $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
-                      ->orWhere(function ($q2) use ($start, $end) {
-                          $q2->whereNull('task_date')
-                             ->whereBetween('created_at', [$start, $end]);
-                      });
-                })
-                ->where(function ($q) use ($user) {
-                    $q->whereHas('contributors', fn ($c) => $c->where('users.id', $user->id))
-                      ->orWhere(function ($q2) use ($user) {
-                          $q2->whereDoesntHave('contributors')
-                             ->where('assigned_to', $user->id);
-                      });
-                })
+            // ⚡ FASE 1 (perbaikan jendela, sesuai permintaanmu):
+            //  • Task Aktif & Estimasi Beban = tugas yang DIBEBANKAN & belum selesai,
+            //    TANPA batas tanggal (biar tugas bertanggal ke depan / tanpa tanggal tetap terlihat).
+            //  • Poin & Task Selesai = tugas yang SELESAI pada periode terpilih (basis tanggal SELESAI).
+            $atribusi = function ($q) use ($user) {
+                $q->whereHas('contributors', fn ($c) => $c->where('users.id', $user->id))
+                  ->orWhere(function ($q2) use ($user) {
+                      $q2->whereDoesntHave('contributors')
+                         ->where('assigned_to', $user->id);
+                  });
+            };
+
+            $aktifTasks = ProjectTask::where('status', '!=', 'Completed')
+                ->where($atribusi)
                 ->with(['contributors:id'])
                 ->get();
 
-            $activeTasks    = $tasks->where('status', '!=', 'Completed')->count();
-            $completedTasks = $tasks->where('status', 'Completed')->count();
-            $totalTasks     = $tasks->count();
+            $selesaiTasks = ProjectTask::where('status', 'Completed')
+                ->whereBetween('completed_at', [$start, $end])
+                ->where($atribusi)
+                ->with(['contributors:id'])
+                ->get();
+
+            $activeTasks    = $aktifTasks->count();
+            $completedTasks = $selesaiTasks->count();
+            $totalTasks     = $activeTasks + $completedTasks;
             $activeRatio = $totalTasks > 0 ? round(($activeTasks / $totalTasks) * 100) : 0;
 
-            // ⚡ FASE 2:
-            //   $points      = total poin periode ini (HANYA task selesai, dibagi rata ke kontributor)
-            //   $plannedLoad = estimasi beban = total bobot task yang DIJADWALKAN di periode ini
-            //                  (termasuk yang belum selesai)
-            $points = 0;
-            $plannedLoad = 0;
+            // ⚡ Estimasi Beban = total bobot tugas yang dibebankan & BELUM selesai
+            $plannedLoad = (int) round($aktifTasks->sum('weight'));
 
-            foreach ($tasks as $task) {
+            // ⚡ Poin = bobot ÷ jumlah kontributor, hanya task SELESAI di periode terpilih
+            $points = 0;
+
+            foreach ($selesaiTasks as $task) {
                 $contributorIds = $task->contributors->pluck('id')->toArray();
                 if (empty($contributorIds) && $task->assigned_to) {
                     $contributorIds = [(int) $task->assigned_to];
@@ -696,11 +698,7 @@ class MonitoringController extends Controller
                     continue;
                 }
 
-                $plannedLoad += (float) $task->weight;
-
-                if ($task->status === 'Completed') {
-                    $points += ((float) $task->weight) / count($contributorIds);
-                }
+                $points += ((float) $task->weight) / count($contributorIds);
             }
 
             // ⚡ FASE 2: status ditentukan dari TOTAL POIN periode ini (bukan rasio task aktif).
@@ -1012,7 +1010,8 @@ class MonitoringController extends Controller
                     if (in_array($u->id, $contributorIds)) {
                         // ⚡ FIX (M3): poin HANYA dari task yang benar-benar SELESAI.
                         // Sebelumnya semua task berbobot ikut dihitung -> total poin divisi palsu.
-                        if ($task->status === 'Completed') {
+                        // ⚡ FASE 1: dihitung pada periode task SELESAI (basis completed_at)
+                        if ($task->status === 'Completed' && $task->completed_at && $task->completed_at->between($start, $end)) {
                             $totalPoints += ((float) $task->weight) / count($contributorIds);
                         }
 

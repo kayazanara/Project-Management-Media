@@ -39,6 +39,13 @@
                     <input type="date" name="task_date" class="form-control" value="{{ old('task_date', $task->task_date?->format('Y-m-d')) }}">
                 </div>
 
+                {{-- ⚡ FASE 2: bobot/poin task bisa diubah kapan saja di sini --}}
+                <div class="form-group">
+                    <label><strong>Bobot / Poin Task</strong></label>
+                    <input type="number" name="weight" class="form-control" min="0" value="{{ old('weight', $task->weight ?? 0) }}">
+                    <small class="text-muted">Poin untuk anggota saat task ini selesai (dibagi rata ke kontributor). 0 = tanpa poin.</small>
+                </div>
+
                 <div class="form-group">
                     <label><strong>Deskripsi / Catatan Tambahan</strong></label>
                     <textarea name="description" class="form-control" rows="3">{{ old('description', $task->description) }}</textarea>
