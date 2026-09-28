@@ -1,4 +1,3 @@
-﻿@'
 # ==========================================
 # LARAVEL DEFAULT
 # ==========================================
@@ -29,12 +28,13 @@ yarn-error.log
 # ==========================================
 
 # --- Database & Backup ---
-database/database.sqlite
-database/backup-*.sqlite
-database/*.sqlite-journal
-database/*.sqlite-wal
-database/*.sqlite-shm
-db_project_media
+/database/*.sqlite
+/database/*.sqlite-journal
+/database/*.sqlite-wal
+/database/*.sqlite-shm
+/database/backups/
+# (sisa file DB lama di root project — sudah dipindah ke database/)
+/db_project_media
 
 # --- Dump & Backup ---
 dump-files-*.txt
@@ -72,8 +72,3 @@ desktop.ini
 *.swp
 *.swo
 *~
-'@ | Out-File -FilePath .gitignore -Encoding UTF8 -Force
-
-Write-Host "`n✅ .gitignore berhasil diupdate!" -ForegroundColor Green
-Write-Host "`nIsi lengkap:" -ForegroundColor Cyan
-Get-Content .gitignore
