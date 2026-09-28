@@ -100,6 +100,9 @@ class TeamController extends Controller
         $request->validate([
             'name'          => 'required|string|max:255',
             'email'         => 'required|email|unique:users,email,' . $id,
+            // ⚡ AUDIT (D1): dulu kolom password saat EDIT tidak divalidasi sama sekali ->
+            // password anggota bisa diganti jadi 1 karakter. Sekarang minimal 6 (sama seperti tambah).
+            'password'      => 'nullable|min:6',
             'role'          => 'required|in:Ustadz,Santri',
             'division'      => 'nullable|string',
             'division_role' => 'required|in:pembina,ketua_media,kepala_divisi,anggota',
@@ -139,6 +142,17 @@ class TeamController extends Controller
     public function destroy($id)
     {
         $user = User::findOrFail($id);
+
+        // ⚡ AUDIT (D1): dulu siapa pun dengan akses manager bisa menghapus AKUNNYA SENDIRI
+        // (atau Pembina terakhir) -> langsung terkunci dari aplikasi. Sekarang dicegah.
+        if ((int) auth()->id() === (int) $user->id) {
+            return back()->with('error', 'Kamu tidak bisa menghapus akunmu sendiri.');
+        }
+
+        if ($user->division_role === 'pembina' && User::where('division_role', 'pembina')->count() <= 1) {
+            return back()->with('error', 'Ini akun Pembina terakhir — tidak boleh dihapus.');
+        }
+
         $user->delete();
 
         return redirect()->route('team.index')->with('success', 'Anggota tim berhasil dihapus!');

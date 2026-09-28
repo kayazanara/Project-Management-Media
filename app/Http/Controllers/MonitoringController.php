@@ -232,12 +232,15 @@ class MonitoringController extends Controller
             $lateCount = 0;
             $lateDaysSum = 0;
 
+            // ⚡ FIX (B2): basis SAMA dengan kolom Poin di baris ini —
+            // SELESAI = completed_at di dalam periode, ATAU masih dibebankan (belum selesai).
+            // Sebelumnya pakai tanggal RENCANA sehingga "Task/Selesai" tidak nyambung dengan Poin.
             $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                    $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
-                      ->orWhere(function ($q2) use ($start, $end) {
-                          $q2->whereNull('task_date')
-                             ->whereBetween('created_at', [$start, $end]);
-                      });
+                    $q->where(function ($q2) use ($start, $end) {
+                        $q2->where('status', 'Completed')
+                           ->whereNotNull('completed_at')
+                           ->whereBetween('completed_at', [$start, $end]);
+                    })->orWhere('status', '!=', 'Completed');
                 })
                 ->whereHas('contributors', function ($q) use ($u) {
                     $q->where('users.id', $u->id);
@@ -487,12 +490,14 @@ class MonitoringController extends Controller
         $result = [];
 
         foreach ($users as $user) {
+            // ⚡ FIX (B2): basis sama dengan kolom Poin (completed_at dalam periode,
+            // atau task yang masih dibebankan) supaya "Task Selesai" & "Poin" nyambung.
             $tasks = ProjectTask::where(function ($q) use ($start, $end) {
-                    $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
-                      ->orWhere(function ($q2) use ($start, $end) {
-                          $q2->whereNull('task_date')
-                             ->whereBetween('created_at', [$start, $end]);
-                      });
+                    $q->where(function ($q2) use ($start, $end) {
+                        $q2->where('status', 'Completed')
+                           ->whereNotNull('completed_at')
+                           ->whereBetween('completed_at', [$start, $end]);
+                    })->orWhere('status', '!=', 'Completed');
                 })
                 ->whereHas('contributors', function ($q) use ($user) {
                     $q->where('users.id', $user->id);
@@ -589,13 +594,11 @@ class MonitoringController extends Controller
             $userPoints = [];
 
             foreach ($months as $m) {
-                $tasks = ProjectTask::where(function ($q) use ($m) {
-                        $q->whereBetween('task_date', [$m['start']->toDateString(), $m['end']->toDateString()])
-                          ->orWhere(function ($q2) use ($m) {
-                              $q2->whereNull('task_date')
-                                 ->whereBetween('created_at', [$m['start'], $m['end']]);
-                          });
-                    })
+                // ⚡ FIX (B3/B2): poin tren bulanan diatribusikan ke bulan task itu SELESAI
+                // (completed_at). Sebelumnya memakai tanggal RENCANA -> poin task yang selesai
+                // bulan ini bisa "nyasar" ke bulan rencananya.
+                $tasks = ProjectTask::where('status', 'Completed')
+                    ->whereBetween('completed_at', [$m['start'], $m['end']])
                     ->whereHas('contributors', function ($q) use ($user) {
                         $q->where('users.id', $user->id);
                     })
@@ -860,19 +863,14 @@ class MonitoringController extends Controller
             ->get();
 
         foreach ($activeUsers as $u) {
-            $hasPoints = ProjectTask::where(function ($q) use ($start14, $end) {
-                    $q->whereBetween('task_date', [$start14->toDateString(), $end->toDateString()])
-                      ->orWhere(function ($q2) use ($start14, $end) {
-                          $q2->whereNull('task_date')
-                             ->whereBetween('created_at', [$start14, $end]);
-                      });
-                })
+            // ⚡ FIX (M4+B2): dianggap "sudah dapat poin" kalau ada task SELESAI & berbobot
+            // yang waktu SELESAI-nya di dalam 14 hari terakhir. Dulu memakai tanggal RENCANA,
+            // sehingga orang yang baru menyelesaikan task (tapi rencananya bulan lalu) tetap
+            // diberi peringatan "belum dapat poin".
+            $hasPoints = ProjectTask::whereBetween('completed_at', [$start14, $end])
                 ->whereHas('contributors', function ($q) use ($u) {
                     $q->where('users.id', $u->id);
                 })
-                // ⚡ FIX (M4): hanya task yang benar-benar SELESAI yang dianggap "sudah dapat poin".
-                // Sebelumnya cukup punya task berbobot (walau belum dikerjakan) -> alert tidak muncul
-                // padahal orangnya belum menyelesaikan apa pun.
                 ->where('status', 'Completed')
                 ->where('weight', '>', 0)
                 ->exists();
