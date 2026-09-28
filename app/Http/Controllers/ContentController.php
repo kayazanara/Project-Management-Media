@@ -117,40 +117,52 @@ class ContentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Content::where('status', 'Ready')->with('project');
+        // ⚡ FASE C: halaman ini KHUSUS konten Stock (Raw & Activity punya halaman sendiri).
+        // Status 'Completed' (data lama hasil isi metadata) diperlakukan sama dengan 'Ready'.
+        $stok = Content::where('upload_type', 'content_stock')->with('project');
 
-        if ($request->filled('type') && in_array($request->type, ['raw', 'content_stock', 'activity'])) {
-            $query->where('upload_type', $request->type);
-        }
+        $butuhMetadata = (clone $stok)
+            ->whereNull('broadcast_filled_at')
+            ->whereNotIn('status', ['Uploaded', 'Archived'])
+            ->orderByDesc('created_at')
+            ->get();
 
-        $readyContents = $query->orderBy('created_at', 'desc')->get();
+        $siapPosting = (clone $stok)
+            ->whereNotNull('broadcast_filled_at')
+            ->whereNotIn('status', ['Uploaded', 'Archived'])
+            ->orderByDesc('created_at')
+            ->get();
 
-        $historyQuery = Content::whereIn('status', ['Uploaded', 'Archived', 'Completed'])->with('project');
+        $sudahDiposting = (clone $stok)
+            ->where('status', 'Uploaded')
+            ->orderByDesc('uploaded_at')
+            ->get();
 
-        if ($request->filled('type') && in_array($request->type, ['raw', 'content_stock', 'activity'])) {
-            $historyQuery->where('upload_type', $request->type);
-        }
+        $arsip = (clone $stok)
+            ->where('status', 'Archived')
+            ->orderByDesc('updated_at')
+            ->get();
 
-        $historyContents = $historyQuery->orderBy('updated_at', 'desc')->take(50)->get();
-
+        // ⚡ FIX (S5): angka kartu dihitung dari basis yang SAMA dengan daftarnya
+        // (sebelumnya kartu menghitung semua status sementara daftar difilter -> tidak sinkron).
         $stats = [
-            'total_ready'    => Content::where('status', 'Ready')->count(),
-            'total_raw'      => Content::where('upload_type', 'raw')->count(),
-            'total_stock'    => Content::where('upload_type', 'content_stock')->count(),
-            'total_activity' => Content::where('upload_type', 'activity')->count(),
-            'waiting_meta'   => Content::where('upload_type', 'content_stock')
-                ->whereNull('broadcast_filled_at')
-                ->where('status', '!=', 'Completed')
-                ->count(),
+            'butuh_metadata'  => $butuhMetadata->count(),
+            'siap_posting'    => $siapPosting->count(),
+            'sudah_diposting' => $sudahDiposting->count(),
+            'arsip'           => $arsip->count(),
+            'total_stock'     => Content::where('upload_type', 'content_stock')->count(),
+            'total_raw'       => Content::where('upload_type', 'raw')->count(),
+            'total_activity'  => Content::where('upload_type', 'activity')->count(),
         ];
 
         return view('contents.index', [
-            'title'           => 'Stock Management',
-            'readyContents'   => $readyContents,
-            'historyContents' => $historyContents,
-            'totalReadyStock' => $stats['total_ready'],
-            'stats'           => $stats,
-            'filterType'      => $request->input('type'),
+            'title'          => 'Stock Management',
+            'butuhMetadata'  => $butuhMetadata,
+            'siapPosting'    => $siapPosting,
+            'sudahDiposting' => $sudahDiposting,
+            'arsip'          => $arsip,
+            'stats'          => $stats,
+            'bisaKelola'     => $this->canEditOrDeleteContent(Auth::user()),
         ]);
     }
 
@@ -686,6 +698,134 @@ class ContentController extends Controller
             'title'   => 'Isi Metadata: ' . $content->content_code,
             'content' => $content,
         ]);
+    }
+
+    // ============================================================
+    // ⚡ FASE D — HALAMAN ACTIVITY (riwayat laporan dari ketua divisi)
+    // ============================================================
+
+    public function activityIndex()
+    {
+        $activities = Content::where('upload_type', 'activity')
+            ->with('project')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('contents.activity', [
+            'title'      => 'Activity',
+            'activities' => $activities,
+            'bisaEdit'   => $this->canEditOrDeleteContent(Auth::user()),
+        ]);
+    }
+
+    // ============================================================
+    // ⚡ FASE D — HALAMAN RAW (link bahan dari ketua divisi, siap diedit)
+    // ============================================================
+
+    public function rawIndex()
+    {
+        $raws = Content::where('upload_type', 'raw')
+            ->with('project')
+            ->orderByRaw('CASE WHEN taken_at IS NULL THEN 0 ELSE 1 END')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('contents.raw', [
+            'title'     => 'Bahan Mentah (Raw)',
+            'raws'      => $raws,
+            'bisaAmbil' => $this->canAmbilRaw(Auth::user()),
+            'daftarUser' => User::pluck('name', 'id'),
+        ]);
+    }
+
+    /**
+     * Halaman detail — dipakai tombol "Lihat" di halaman Activity & Raw.
+     */
+    public function show($id)
+    {
+        $content = Content::with('project')->findOrFail($id);
+
+        if (! in_array($content->upload_type, ['activity', 'raw'], true)) {
+            return redirect()->route('contents.index');
+        }
+
+        return view('contents.show', [
+            'title'     => 'Detail ' . ucfirst($content->upload_type) . ': ' . $content->content_code,
+            'content'   => $content,
+            'pengambil' => $content->taken_by ? User::find($content->taken_by) : null,
+            'bisaAmbil' => $this->canAmbilRaw(Auth::user()),
+        ]);
+    }
+
+    /**
+     * Tandai bahan raw sudah diambil untuk diedit + catat siapa yang mengambil.
+     */
+    public function ambilRaw($id)
+    {
+        $user = Auth::user();
+
+        if (! $this->canAmbilRaw($user)) {
+            abort(403, 'Anda tidak berhak menandai pengambilan bahan.');
+        }
+
+        $content = Content::findOrFail($id);
+
+        if ($content->upload_type !== 'raw') {
+            return back()->with('error', 'Aksi ini hanya untuk konten Raw.');
+        }
+
+        if ($content->taken_at) {
+            return back()->with('error', 'Bahan ini sudah ditandai diambil.');
+        }
+
+        $content->update([
+            'taken_at' => now(),
+            'taken_by' => $user->id,
+        ]);
+
+        return back()->with('success', 'Bahan ' . $content->content_code . ' ditandai sudah diambil oleh ' . $user->name . '.');
+    }
+
+    /**
+     * Batalkan penanda pengambilan (oleh pengambil sendiri atau atasan).
+     */
+    public function lepasRaw($id)
+    {
+        $user = Auth::user();
+
+        if (! $this->canAmbilRaw($user)) {
+            abort(403, 'Anda tidak berhak mengubah penanda pengambilan.');
+        }
+
+        $content = Content::findOrFail($id);
+
+        if (! $content->taken_at) {
+            return back()->with('error', 'Bahan ini belum ditandai diambil.');
+        }
+
+        if ((int) $content->taken_by !== (int) $user->id && ! $user->isManager() && ! $this->canEditOrDeleteContent($user)) {
+            return back()->with('error', 'Hanya yang mengambil atau atasan yang bisa membatalkan.');
+        }
+
+        $content->update(['taken_at' => null, 'taken_by' => null]);
+
+        return back()->with('success', 'Penanda pengambilan ' . $content->content_code . ' dibatalkan.');
+    }
+
+    /**
+     * Siapa yang boleh menandai bahan raw diambil: tim Editing + kepala divisi, dan manager ke atas.
+     */
+    private function canAmbilRaw(User $user): bool
+    {
+        if ($this->canEditOrDeleteContent($user)) {
+            return true;
+        }
+
+        if (str_contains(strtolower($user->division ?? ''), 'editing')) {
+            return true;
+        }
+
+        return $user->isKepalaDivisi();
     }
 
     // ============================================================

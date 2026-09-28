@@ -145,6 +145,14 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/contents/upload-stock', [ContentController::class, 'formStock'])->name('contents.formStock');
     Route::post('/contents/upload-stock', [ContentController::class, 'uploadStock'])->name('contents.uploadStock');
 
+    // ⚡ FASE D: halaman Activity & Raw punya tampilan sendiri (akses semua user login,
+    // sedangkan aksinya dibatasi di controller).
+    Route::get('/contents/activity', [ContentController::class, 'activityIndex'])->name('contents.activity');
+    Route::get('/contents/raw', [ContentController::class, 'rawIndex'])->name('contents.raw');
+    Route::get('/contents/{id}/lihat', [ContentController::class, 'show'])->name('contents.show');
+    Route::post('/contents/{id}/ambil', [ContentController::class, 'ambilRaw'])->name('contents.ambil');
+    Route::post('/contents/{id}/lepas', [ContentController::class, 'lepasRaw'])->name('contents.lepas');
+
     Route::get('/contents/upload-activity', [ContentController::class, 'formActivity'])->name('contents.formActivity');
     Route::post('/contents/upload-activity', [ContentController::class, 'uploadActivity'])->name('contents.uploadActivity');
 

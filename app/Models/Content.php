@@ -25,12 +25,16 @@ class Content extends Model
         'status',
         'uploaded_at',
         'broadcast_filled_at',
+        // ⚡ FASE D: penanda bahan raw sudah diambil tim Editing
+        'taken_at',
+        'taken_by',
     ];
 
     protected $casts = [
         'platform' => 'array',
         'uploaded_at' => 'datetime',
         'broadcast_filled_at' => 'datetime',
+        'taken_at' => 'datetime',
     ];
 
     // ============================================================

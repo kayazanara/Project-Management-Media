@@ -265,4 +265,102 @@ class ContentStockTest extends TestCase
 
         $this->assertSame('Ready', $konten->fresh()->status);
     }
+
+    // ============================================================
+    // FASE D — HALAMAN ACTIVITY & RAW
+    // ============================================================
+
+    private function anggotaDivisi(string $divisi): User
+    {
+        return User::where('division', 'like', "%{$divisi}%")
+            ->where('division_role', 'anggota')
+            ->where('status', 'Aktif')
+            ->firstOrFail();
+    }
+
+    public function test_halaman_activity_hanya_menampilkan_activity(): void
+    {
+        $this->buatKonten(['upload_type' => 'activity', 'content_code' => 'ACT001', 'title' => 'Laporan Activity Uji']);
+        $this->buatKonten(['upload_type' => 'raw', 'content_code' => 'RAW001', 'title' => 'Bahan Raw Uji']);
+
+        $res = $this->actingAs($this->pembina())->get('/contents/activity');
+        $res->assertOk();
+
+        $res->assertSee('Laporan Activity Uji', false);
+        $res->assertDontSee('Bahan Raw Uji', false);
+    }
+
+    public function test_halaman_raw_hanya_menampilkan_raw(): void
+    {
+        $this->buatKonten(['upload_type' => 'activity', 'content_code' => 'ACT001', 'title' => 'Laporan Activity Uji']);
+        $this->buatKonten(['upload_type' => 'raw', 'content_code' => 'RAW001', 'title' => 'Bahan Raw Uji']);
+
+        $res = $this->actingAs($this->pembina())->get('/contents/raw');
+        $res->assertOk();
+
+        $res->assertSee('Bahan Raw Uji', false);
+        $res->assertDontSee('Laporan Activity Uji', false);
+    }
+
+    public function test_ambil_bahan_raw_mencatat_siapa_dan_kapan(): void
+    {
+        $editor = $this->anggotaDivisi('Editing');
+        $raw    = $this->buatKonten(['upload_type' => 'raw', 'content_code' => 'RAW001']);
+
+        $this->assertNull($raw->taken_at);
+
+        $this->actingAs($editor)
+            ->post("/contents/{$raw->id}/ambil")
+            ->assertRedirect();
+
+        $raw->refresh();
+
+        $this->assertNotNull($raw->taken_at, 'Waktu pengambilan harus tercatat.');
+        $this->assertSame($editor->id, (int) $raw->taken_by, 'Siapa yang mengambil harus tercatat.');
+
+        // tampil di halaman raw sebagai sudah diambil
+        $this->actingAs($this->pembina())
+            ->get('/contents/raw')
+            ->assertOk()
+            ->assertSee('Sudah diambil', false)
+            ->assertSee($editor->name, false);
+    }
+
+    public function test_lepas_penanda_bahan_raw(): void
+    {
+        $editor = $this->anggotaDivisi('Editing');
+        $raw    = $this->buatKonten(['upload_type' => 'raw', 'content_code' => 'RAW001']);
+
+        $this->actingAs($editor)->post("/contents/{$raw->id}/ambil")->assertRedirect();
+        $this->actingAs($editor)->post("/contents/{$raw->id}/lepas")->assertRedirect();
+
+        $raw->refresh();
+
+        $this->assertNull($raw->taken_at);
+        $this->assertNull($raw->taken_by);
+    }
+
+    public function test_divisi_luar_editing_tidak_bisa_menandai_ambil_bahan(): void
+    {
+        $lapangan = $this->anggotaDivisi('Lapangan');
+        $raw      = $this->buatKonten(['upload_type' => 'raw', 'content_code' => 'RAW001']);
+
+        $this->actingAs($lapangan)
+            ->post("/contents/{$raw->id}/ambil")
+            ->assertForbidden();
+
+        $this->assertNull($raw->fresh()->taken_at);
+    }
+
+    public function test_halaman_stock_tidak_lagi_mencampur_raw_dan_activity(): void
+    {
+        $this->buatKonten(['upload_type' => 'raw', 'content_code' => 'RAW001', 'title' => 'Bahan Raw Uji']);
+        $this->buatKonten(['title' => 'Stok Konten Uji']);
+
+        $res = $this->actingAs($this->pembina())->get('/contents');
+        $res->assertOk();
+
+        $res->assertSee('Stok Konten Uji', false);
+        $res->assertDontSee('Bahan Raw Uji', false);
+    }
 }

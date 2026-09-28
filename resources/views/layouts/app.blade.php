@@ -457,6 +457,19 @@
                         <span>Stock Management</span></a>
                 </li>
 
+                {{-- ⚡ FASE D: halaman Activity & Bahan Raw punya menu sendiri --}}
+                <li class="nav-item {{ request()->routeIs('contents.activity') ? 'active' : '' }}">
+                    <a class="nav-link" href="{{ route('contents.activity') }}">
+                        <i class="fas fa-fw fa-running"></i>
+                        <span>Activity</span></a>
+                </li>
+
+                <li class="nav-item {{ request()->routeIs('contents.raw') ? 'active' : '' }}">
+                    <a class="nav-link" href="{{ route('contents.raw') }}">
+                        <i class="fas fa-fw fa-file-import"></i>
+                        <span>Bahan Raw</span></a>
+                </li>
+
                 <li class="nav-item {{ request()->routeIs('team.*') ? 'active' : '' }}">
                     <a class="nav-link" href="{{ url('/team') }}">
                         <i class="fas fa-fw fa-users"></i>
@@ -503,6 +516,18 @@
                         <a class="nav-link" href="{{ route('contents.index') }}">
                             <i class="fas fa-fw fa-boxes"></i>
                             <span>Stock Management</span>
+                        </a>
+                    </li>
+                    <li class="nav-item {{ request()->routeIs('contents.activity') ? 'active' : '' }}">
+                        <a class="nav-link" href="{{ route('contents.activity') }}">
+                            <i class="fas fa-fw fa-running"></i>
+                            <span>Activity</span>
+                        </a>
+                    </li>
+                    <li class="nav-item {{ request()->routeIs('contents.raw') ? 'active' : '' }}">
+                        <a class="nav-link" href="{{ route('contents.raw') }}">
+                            <i class="fas fa-fw fa-file-import"></i>
+                            <span>Bahan Raw</span>
                         </a>
                     </li>
                     <li class="nav-item {{ request()->routeIs('division.*') ? 'active' : '' }}">
