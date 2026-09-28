@@ -626,6 +626,11 @@
     <div class="td-modal-content" id="tdModalContent"></div>
 </div>
 
+{{-- ⚡ FASE 3: modal riwayat poin --}}
+<div class="td-modal-backdrop" id="tdHistoryModal">
+    <div class="td-modal-content" id="tdHistoryContent"></div>
+</div>
+
 <script id="tdData" type="application/json">
 @json($directory)
 </script>
@@ -836,9 +841,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         </div>
                     </div>
 
-                    <small class="text-muted">
-                        <i class="fas fa-circle text-success mr-1" style="font-size: 8px;"></i>
-                        Login ${m.last_login}
+                    <div class="mb-1">
+                        ${m.is_online
+                            ? '<span class="badge badge-success"><i class="fas fa-circle mr-1" style="font-size:7px;"></i>Online</span>'
+                            : '<span class="badge badge-secondary"><i class="fas fa-circle mr-1" style="font-size:7px;"></i>Offline</span>'}
+                    </div>
+                    <small class="text-muted d-block">
+                        <i class="fas fa-clock mr-1" style="font-size: 9px;"></i>Terakhir terlihat: ${m.last_seen}
                     </small>
                 </div>
 
@@ -874,6 +883,9 @@ document.addEventListener('DOMContentLoaded', function () {
                         <button type="button" class="btn btn-primary btn-sm btn-open-detail" data-id="${m.id}">
                             <i class="fas fa-expand-alt mr-1"></i> Lihat Detail Lengkap
                         </button>
+                        <button type="button" class="btn btn-warning btn-sm btn-point-history ml-1" data-id="${m.id}">
+                            <i class="fas fa-star mr-1"></i> Riwayat Poin
+                        </button>
                         <a href="${m.profile_url}" class="btn btn-outline-secondary btn-sm ml-1">
                             <i class="fas fa-user mr-1"></i> Buka Profil
                         </a>
@@ -899,6 +911,12 @@ document.addEventListener('DOMContentLoaded', function () {
         col.querySelector('.btn-open-detail').addEventListener('click', function (e) {
             e.stopPropagation();
             openModal(m);
+        });
+
+        // ⚡ FASE 3: tombol riwayat poin
+        col.querySelector('.btn-point-history').addEventListener('click', function (e) {
+            e.stopPropagation();
+            openPointHistory(m);
         });
 
         return col;
@@ -1119,6 +1137,109 @@ document.addEventListener('DOMContentLoaded', function () {
 
     loadMoreBtn.addEventListener('click', function () {
         renderNextBatch();
+    });
+
+    // ==========================================================
+    // ⚡ FASE 3: RIWAYAT POIN (modal)
+    // ==========================================================
+
+    const historyModal = document.getElementById('tdHistoryModal');
+    const historyContent = document.getElementById('tdHistoryContent');
+    const historyDays = {{ (int) $filterDays }};
+    const historyUrlBase = @json(route('monitoring.pointHistory', ['id' => '__ID__']));
+
+    function escapeHtml(str) {
+        return String(str === null || str === undefined ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function openPointHistory(m) {
+        historyContent.innerHTML = '<div class="p-4 text-center text-muted"><i class="fas fa-spinner fa-spin mr-2"></i>Memuat riwayat poin...</div>';
+        historyModal.classList.add('show');
+
+        const url = historyUrlBase.replace('__ID__', m.id) + '?days=' + historyDays;
+
+        fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                let rows = '';
+
+                if (!data.items || data.items.length === 0) {
+                    rows = '<tr><td colspan="5" class="text-center text-muted py-4">Belum ada task selesai pada periode ini.</td></tr>';
+                } else {
+                    data.items.forEach(function (it) {
+                        rows += '<tr>'
+                            + '<td><div class="font-weight-bold" style="font-size:13px;">' + escapeHtml(it.task) + '</div>'
+                            + '<small class="text-muted">' + escapeHtml(it.project) + '</small></td>'
+                            + '<td class="text-center">' + it.weight + '</td>'
+                            + '<td class="text-center">' + it.contributors + ' org</td>'
+                            + '<td class="text-center"><strong class="text-primary">+' + it.points + '</strong></td>'
+                            + '<td class="text-center"><small>' + escapeHtml(it.completed_at) + '</small><br>'
+                            + (it.on_time
+                                ? '<span class="badge badge-success">Tepat waktu</span>'
+                                : '<span class="badge badge-warning">Telat</span>')
+                            + '</td>'
+                            + '</tr>';
+                    });
+                }
+
+                historyContent.innerHTML = `
+                    <button type="button" class="td-modal-close" id="tdHistoryClose">&times;</button>
+                    <div class="p-4">
+                        <h5 class="font-weight-bold mb-1"><i class="fas fa-star text-warning mr-1"></i> Riwayat Poin</h5>
+                        <p class="text-muted small mb-3">
+                            ${escapeHtml(data.user.name)} &bull; ${escapeHtml(data.user.division)} &bull;
+                            periode ${data.period.days} hari (${data.period.start} s/d ${data.period.end})
+                        </p>
+
+                        <div class="alert alert-light border small mb-3">
+                            Total poin periode ini: <strong class="text-primary">${data.total_points}</strong><br>
+                            <small class="text-muted">Poin dibagi rata ke seluruh kontributor task.</small>
+                        </div>
+
+                        <div class="table-responsive" style="max-height: 45vh; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>Task / Project</th>
+                                        <th class="text-center">Bobot</th>
+                                        <th class="text-center">Kontributor</th>
+                                        <th class="text-center">Poin</th>
+                                        <th class="text-center">Selesai</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('tdHistoryClose').addEventListener('click', closePointHistory);
+            })
+            .catch(function () {
+                historyContent.innerHTML = '<div class="p-4 text-center text-danger">Gagal memuat riwayat poin.</div>';
+            });
+    }
+
+    function closePointHistory() {
+        historyModal.classList.remove('show');
+        setTimeout(function () { historyContent.innerHTML = ''; }, 300);
+    }
+
+    historyModal.addEventListener('click', function (e) {
+        if (e.target === historyModal) {
+            closePointHistory();
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            closePointHistory();
+        }
     });
 
     applyFilterAndSort();

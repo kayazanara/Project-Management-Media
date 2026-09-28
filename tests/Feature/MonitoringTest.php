@@ -88,6 +88,7 @@ class MonitoringTest extends TestCase
             'deadline'        => $res->viewData('deadline'),
             'alerts'          => $res->viewData('alerts'),
             'divisionSummary' => $res->viewData('divisionSummary'),
+            'directory'       => $res->viewData('directory'),
         ];
     }
 
@@ -361,5 +362,87 @@ class MonitoringTest extends TestCase
 
         $this->assertSame('overload', $workload[0]['status'], 'Baris pertama harus yang Overload.');
         $this->assertSame($overload->id, $workload[0]['id']);
+    }
+
+    // ==========================================================
+    // FASE 3 — TEAM DIRECTORY: online/offline + riwayat poin
+    // ==========================================================
+
+    private function catatSesi(User $user, int $detikLalu = 0): void
+    {
+        \DB::table('sessions')->insert([
+            'id'            => 'uji-' . uniqid(),
+            'user_id'       => $user->id,
+            'ip_address'    => '127.0.0.1',
+            'user_agent'    => 'phpunit',
+            'payload'       => base64_encode('x'),
+            'last_activity' => now()->subSeconds($detikLalu)->timestamp,
+        ]);
+    }
+
+    public function test_direktori_menampilkan_status_online_dari_aktivitas_sesi(): void
+    {
+        $online  = $this->anggotaDivisi('Lapangan');
+        $offline = $this->anggotaDivisi('Editing');
+
+        $this->catatSesi($online); // aktivitas baru saja
+
+        $direktori = collect($this->monitoring(['days' => 30])['directory']);
+
+        $this->assertTrue((bool) $direktori->firstWhere('id', $online->id)['is_online'], 'Ada sesi < 5 menit -> Online.');
+        $this->assertFalse((bool) $direktori->firstWhere('id', $offline->id)['is_online'], 'Tanpa sesi aktif -> Offline.');
+    }
+
+    public function test_direktori_online_hanya_kalau_aktivitas_dalam_5_menit(): void
+    {
+        $lama = $this->anggotaDivisi('Broadcast');
+
+        $this->catatSesi($lama, 30 * 60); // 30 menit lalu
+
+        $row = collect($this->monitoring(['days' => 30])['directory'])->firstWhere('id', $lama->id);
+
+        $this->assertFalse((bool) $row['is_online'], 'Aktivitas 30 menit lalu bukan Online.');
+        $this->assertStringContainsString('menit lalu', $row['last_seen']);
+    }
+
+    public function test_endpoint_riwayat_poin_hanya_untuk_pembina(): void
+    {
+        $anggota = $this->anggotaDivisi('Lapangan');
+        $ketua   = User::where('division_role', 'ketua_media')->where('status', 'Aktif')->firstOrFail();
+
+        $this->actingAs($ketua)
+            ->get("/monitoring/point-history/{$anggota->id}")
+            ->assertForbidden();
+
+        $this->actingAs($this->pembina())
+            ->get("/monitoring/point-history/{$anggota->id}")
+            ->assertOk();
+    }
+
+    public function test_riwayat_poin_berisi_task_penyumbang_poin_dan_dibagi_rata(): void
+    {
+        $anggota = $this->anggotaDivisi('AI Research');
+        $teman   = $this->anggotaDivisi('Lapangan');
+
+        // Bobot 10 dibagi 2 kontributor -> 5 poin
+        $this->buatTask([$anggota->id, $teman->id], $anggota->id, 10, 'Completed', null, Carbon::today()->setTime(6, 0)->toDateTimeString());
+        // Bobot 10 dikerjakan sendiri -> 10 poin
+        $this->buatTask([$anggota->id], $anggota->id, 10, 'Completed', null, Carbon::today()->setTime(7, 0)->toDateTimeString());
+        // Belum selesai -> tidak boleh muncul
+        $this->buatTask([$anggota->id], $anggota->id, 99, 'Pending');
+
+        $res = $this->actingAs($this->pembina())->get("/monitoring/point-history/{$anggota->id}?days=30");
+        $res->assertOk();
+
+        $data  = $res->json();
+        $items = collect($data['items']);
+
+        $this->assertCount(2, $items, 'Hanya task selesai yang masuk riwayat poin.');
+        $this->assertSame([5.0, 10.0], $items->pluck('points')->map(fn ($p) => (float) $p)->sort()->values()->all());
+        $this->assertSame(15.0, (float) $data['total_points']);
+
+        $dibagi = $items->firstWhere('contributors', 2);
+        $this->assertNotNull($dibagi, 'Task dengan 2 kontributor harus tercatat.');
+        $this->assertSame(5.0, (float) $dibagi['points']);
     }
 }

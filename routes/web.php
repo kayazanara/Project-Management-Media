@@ -47,6 +47,10 @@ Route::middleware(['auth'])->group(function () {
     // ==========================================
     Route::middleware(['divisi.access:pembina'])->group(function () {
         Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring.index');
+
+        // ⚡ FASE 3: riwayat poin anggota (JSON, dipakai modal Team Directory)
+        Route::get('/monitoring/point-history/{id}', [MonitoringController::class, 'pointHistory'])
+            ->name('monitoring.pointHistory');
     });
 
     // ==========================================

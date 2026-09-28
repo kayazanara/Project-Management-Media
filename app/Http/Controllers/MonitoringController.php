@@ -54,6 +54,145 @@ class MonitoringController extends Controller
         ]);
     }
 
+    /**
+     * ⚡ FASE 3: endpoint JSON riwayat poin seorang anggota (dipakai modal Team Directory).
+     */
+    public function pointHistory(Request $request, $id)
+    {
+        if (! Auth::user()->isPembina()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $days = (int) $request->input('days', 30);
+        if (! in_array($days, [7, 30, 90], true)) {
+            $days = 30;
+        }
+
+        $start = now()->subDays($days - 1)->startOfDay();
+        $end   = now()->endOfDay();
+
+        $user  = User::findOrFail($id);
+        $items = $this->buildPointHistory($user, $start, $end);
+
+        return response()->json([
+            'user' => [
+                'id'       => $user->id,
+                'name'     => $user->name,
+                'division' => $user->division ?? '-',
+            ],
+            'period' => [
+                'days'  => $days,
+                'start' => $start->toDateString(),
+                'end'   => $end->toDateString(),
+            ],
+            'total_points' => round(collect($items)->sum('points'), 1),
+            'items'        => $items,
+        ]);
+    }
+
+    /**
+     * ⚡ FASE 3: riwayat poin = daftar task SELESAI penyumbang poin pada periode terpilih.
+     * Menjawab "poinnya didapat dari mana saja".
+     */
+    private function buildPointHistory(User $user, Carbon $start, Carbon $end): array
+    {
+        $tasks = ProjectTask::where('status', 'Completed')
+            ->where(function ($q) use ($start, $end) {
+                $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
+                  ->orWhere(function ($q2) use ($start, $end) {
+                      $q2->whereNull('task_date')
+                         ->whereBetween('created_at', [$start, $end]);
+                  });
+            })
+            ->where(function ($q) use ($user) {
+                $q->whereHas('contributors', fn ($c) => $c->where('users.id', $user->id))
+                  ->orWhere(function ($q2) use ($user) {
+                      $q2->whereDoesntHave('contributors')
+                         ->where('assigned_to', $user->id);
+                  });
+            })
+            ->with(['project:id,name', 'contributors:id'])
+            ->orderByDesc('completed_at')
+            ->get();
+
+        $items = [];
+
+        foreach ($tasks as $task) {
+            $contributorIds = $task->contributors->pluck('id')->toArray();
+            if (empty($contributorIds) && $task->assigned_to) {
+                $contributorIds = [(int) $task->assigned_to];
+            }
+            if (empty($contributorIds)) {
+                continue;
+            }
+
+            $bagi = count($contributorIds);
+
+            $items[] = [
+                'task'         => $task->title,
+                'project'      => $task->project->name ?? '-',
+                'project_id'   => $task->project_id,
+                'weight'       => (float) $task->weight,
+                'contributors' => $bagi,
+                'points'       => round(((float) $task->weight) / $bagi, 2),
+                'completed_at' => $task->completed_at ? $task->completed_at->translatedFormat('d M Y') : '-',
+                'on_time'      => $this->isOnTime($task),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * ⚡ FASE 3: aktivitas sesi terakhir per user, dari tabel `sessions`
+     * (SESSION_DRIVER harus 'database' supaya ini ada isinya).
+     * Return: [user_id => Carbon]
+     */
+    private function lastActivityPerUser(): array
+    {
+        $rows = \DB::table('sessions')
+            ->whereNotNull('user_id')
+            ->select('user_id', \DB::raw('MAX(last_activity) as last_activity'))
+            ->groupBy('user_id')
+            ->get();
+
+        $map = [];
+
+        foreach ($rows as $row) {
+            $map[(int) $row->user_id] = Carbon::createFromTimestamp((int) $row->last_activity);
+        }
+
+        return $map;
+    }
+
+    /**
+     * ⚡ FASE 3: teks "terakhir terlihat".
+     * Prioritas: aktivitas sesi (menit/jam) -> last_login_date -> belum pernah.
+     */
+    private function formatLastSeen(?Carbon $lastActivity, ?Carbon $lastLoginDate): string
+    {
+        if ($lastActivity) {
+            $menit = (int) $lastActivity->diffInMinutes(now());
+            if ($menit < 1) {
+                return 'baru saja';
+            }
+            if ($menit < 60) {
+                return $menit . ' menit lalu';
+            }
+
+            $jam = (int) $lastActivity->diffInHours(now());
+            if ($jam < 24) {
+                return $jam . ' jam lalu';
+            }
+
+            return $lastActivity->translatedFormat('d M Y, H:i');
+        }
+
+        return $lastLoginDate
+            ? 'login terakhir ' . $lastLoginDate->translatedFormat('d M Y')
+            : 'belum pernah';
+    }
+
     // ============================================================
     // HELPER: KETEPATAN WAKTU
     // ============================================================
@@ -87,6 +226,11 @@ class MonitoringController extends Controller
             ->get();
 
         $result = [];
+
+        // ⚡ FASE 3: peta aktivitas sesi terakhir (tabel sessions).
+        // Online = ada aktivitas < 5 menit terakhir.
+        $aktivitasSesi = $this->lastActivityPerUser();
+        $batasOnline   = now()->subMinutes(5);
 
         foreach ($users as $u) {
             $points = 0;
@@ -269,6 +413,9 @@ class MonitoringController extends Controller
                 'active_projects'    => $activeProjects,
                 'last_login'         => $u->last_login_date ? $u->last_login_date->translatedFormat('d M Y') : 'Belum pernah',
                 'last_login_days'    => $u->last_login_date ? $u->last_login_date->diffInDays(now()) : null,
+                // ⚡ FASE 3: status online/offline + teks "terakhir terlihat"
+                'is_online'          => isset($aktivitasSesi[$u->id]) && $aktivitasSesi[$u->id]->greaterThan($batasOnline),
+                'last_seen'          => $this->formatLastSeen($aktivitasSesi[$u->id] ?? null, $u->last_login_date),
                 'trend_labels'       => $trendLabels,
                 'trend_data'         => $trendData,
                 'recent_tasks'       => $recentTasks,
