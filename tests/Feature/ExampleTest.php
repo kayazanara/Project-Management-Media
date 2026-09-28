@@ -2,18 +2,26 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
     /**
-     * A basic test example.
+     * Root aplikasi sekarang MENGARAHKAN ke halaman login (bukan render 200),
+     * jadi test bawaan Laravel (harap 200) sudah usang.
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_root_mengarahkan_ke_halaman_login(): void
     {
-        $response = $this->get('/');
+        $this->get('/')->assertRedirect('/login');
+    }
 
-        $response->assertStatus(200);
+    public function test_halaman_login_bisa_dibuka(): void
+    {
+        $this->get('/login')->assertOk();
+    }
+
+    public function test_health_check_ok(): void
+    {
+        $this->get('/up')->assertOk();
     }
 }
