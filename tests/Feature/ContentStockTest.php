@@ -363,4 +363,93 @@ class ContentStockTest extends TestCase
         $res->assertSee('Stok Konten Uji', false);
         $res->assertDontSee('Bahan Raw Uji', false);
     }
+
+    // ============================================================
+    // A3 / A5 / A6 — ARSIP, UPLOAD KE PROJECT SELESAI, KEPEMILIKAN ACTIVITY
+    // ============================================================
+
+    public function test_arsipkan_dan_batalkan_arsip(): void
+    {
+        $konten = $this->buatKonten(['broadcast_filled_at' => now(), 'status' => 'Ready']);
+
+        $this->actingAs($this->kepalaBroadcast())
+            ->patch("/contents/{$konten->id}/status", ['status' => 'Archived'])
+            ->assertRedirect();
+
+        $this->assertSame('Archived', $konten->fresh()->status);
+
+        $this->actingAs($this->kepalaBroadcast())
+            ->patch("/contents/{$konten->id}/status", ['status' => 'Ready'])
+            ->assertRedirect();
+
+        $this->assertSame('Ready', $konten->fresh()->status);
+    }
+
+    public function test_status_completed_tidak_bisa_diset_lagi(): void
+    {
+        $konten = $this->buatKonten();
+
+        $this->actingAs($this->kepalaBroadcast())
+            ->patch("/contents/{$konten->id}/status", ['status' => 'Completed'])
+            ->assertSessionHasErrors('status');
+
+        $this->assertSame('Ready', $konten->fresh()->status);
+    }
+
+    public function test_upload_stok_ke_project_yang_sudah_completed_ditolak(): void
+    {
+        $konten = $this->buatKonten();
+        $konten->project->update(['status' => Project::STATUS_COMPLETED]);
+
+        $this->actingAs($this->pembina())
+            ->post('/contents/upload-stock', [
+                'project_id' => $konten->project_id,
+                'items'      => [[
+                    'title'    => 'Stok ke project selesai',
+                    'file_url' => 'https://drive.google.com/x',
+                    'prefix'   => 'DAK',
+                ]],
+            ])
+            ->assertRedirect();
+
+        $this->assertNull(
+            Content::where('title', 'Stok ke project selesai')->first(),
+            'Project yang sudah Completed tidak boleh diupload lagi.'
+        );
+    }
+
+    public function test_pengunggah_activity_boleh_edit_miliknya_sendiri(): void
+    {
+        $ketuaLapangan = User::where('division_role', 'kepala_divisi')
+            ->where('division', 'like', '%Lapangan%')->firstOrFail();
+        $ketuaEditing = User::where('division_role', 'kepala_divisi')
+            ->where('division', 'like', '%Editing%')->firstOrFail();
+
+        $project = $this->buatKonten()->project;
+
+        $this->actingAs($ketuaLapangan)
+            ->post('/contents/upload-activity', [
+                'project_id' => $project->id,
+                'title'      => 'Activity dari Lapangan',
+                'caption'    => 'Laporan kegiatan lapangan hari ini',
+            ])
+            ->assertRedirect();
+
+        $act = Content::where('title', 'Activity dari Lapangan')->firstOrFail();
+
+        $this->assertSame($ketuaLapangan->id, (int) $act->created_by, 'created_by harus tercatat otomatis.');
+
+        // pengunggahnya boleh buka form edit & menyimpan
+        $this->actingAs($ketuaLapangan)->get("/contents/{$act->id}/edit")->assertOk();
+
+        $this->actingAs($ketuaLapangan)->put("/contents/{$act->id}", [
+            'project_id' => $act->project_id,
+            'title'      => 'Activity Lapangan (diperbaiki)',
+        ])->assertRedirect();
+
+        $this->assertSame('Activity Lapangan (diperbaiki)', $act->fresh()->title);
+
+        // ketua divisi LAIN tidak boleh mengedit
+        $this->actingAs($ketuaEditing)->get("/contents/{$act->id}/edit")->assertForbidden();
+    }
 }
