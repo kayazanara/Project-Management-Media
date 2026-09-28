@@ -57,7 +57,7 @@
                                     <a href="{{ route('contents.show', $a->id) }}" class="btn btn-sm btn-info" title="Lihat detail">
                                         <i class="fas fa-eye"></i> Lihat
                                     </a>
-                                    @if ($bisaEdit)
+                                    @if ($bisaEditPerId[$a->id] ?? false)
                                         <a href="{{ route('contents.edit', $a->id) }}" class="btn btn-sm btn-warning" title="Edit activity">
                                             <i class="fas fa-edit"></i> Edit
                                         </a>

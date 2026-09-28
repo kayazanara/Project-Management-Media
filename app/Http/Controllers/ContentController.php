@@ -51,35 +51,74 @@ class ContentController extends Controller
                 ->get();
         }
 
+        // ⚡ FIX (A1): daftar project HARUS sama dengan aturan upload-nya.
+        // Dulu kalau divisi user kosong, SEMUA project ditampilkan padahal upload-nya bakal ditolak.
+        $query = Project::where('status', '!=', Project::STATUS_COMPLETED);
+
         $division = trim($user->division ?? '');
-        if (empty($division)) {
-            return Project::where('status', '!=', Project::STATUS_COMPLETED)
+
+        if ($division === '') {
+            return $query->whereHas('users', fn ($q) => $q->where('users.id', $user->id))
                 ->orderBy('name')
                 ->get();
         }
 
         $divisionUserIds = User::where('division', $division)->pluck('id');
 
-        return Project::whereHas('users', function ($q) use ($divisionUserIds) {
+        return $query->whereHas('users', function ($q) use ($divisionUserIds) {
                 $q->whereIn('users.id', $divisionUserIds);
             })
-            ->where('status', '!=', Project::STATUS_COMPLETED)
             ->orderBy('name')
             ->get();
     }
 
+    /**
+     * ⚡ FIX (A1/A3): SATU aturan upload yang konsisten dipakai raw, stok, dan activity.
+     * - Project yang sudah COMPLETED: tidak boleh diupload lagi (dulu masih bisa).
+     * - Manager ke atas (Pembina/Ketua Media): selalu boleh.
+     * - Selain itu: harus terlibat di project ATAU ada anggota sedivisi di project itu.
+     *   (Dulu: cukup "ada anggota sedivisi", dan kalau divisi user kosong dropdown menampilkan
+     *   SEMUA project padahal upload-nya bakal ditolak.)
+     */
     private function canUserUploadToProject(User $user, Project $project): bool
     {
+        if ($project->status === Project::STATUS_COMPLETED) {
+            return false;
+        }
+
         if ($user->isManager()) {
             return true;
         }
 
+        if ($project->users()->where('users.id', $user->id)->exists()) {
+            return true;
+        }
+
         $division = trim($user->division ?? '');
-        if (empty($division)) {
+
+        if ($division === '') {
             return false;
         }
 
         return $project->users()->where('users.division', $division)->exists();
+    }
+
+    /**
+     * ⚡ FASE A6: boleh mengelola konten ini?
+     * - Atasan (Pembina / Ketua Media / Kepala Divisi Broadcast): selalu boleh.
+     * - Selain itu: pengunggah konten ACTIVITY boleh mengelola miliknya sendiri
+     *   (dulu tabel contents tidak menyimpan pengunggah, jadi ketua divisi
+     *   tidak bisa memperbaiki activity yang dia input sendiri).
+     */
+    private function bolehKelolaKonten(User $user, Content $content): bool
+    {
+        if ($this->canEditOrDeleteContent($user)) {
+            return true;
+        }
+
+        return $content->upload_type === 'activity'
+            && $content->created_by
+            && (int) $content->created_by === (int) $user->id;
     }
 
     private function getRedirectAfterActivity(User $user)
@@ -121,6 +160,13 @@ class ContentController extends Controller
         // Status 'Completed' (data lama hasil isi metadata) diperlakukan sama dengan 'Ready'.
         $stok = Content::where('upload_type', 'content_stock')->with('project');
 
+        // ⚡ FIX (A2): filter & rekap per kategori prefix (kode konten DAK/DOK/MEM/PSB)
+        $prefix = strtoupper((string) $request->input('prefix'));
+
+        if (in_array($prefix, ['DAK', 'DOK', 'MEM', 'PSB'], true)) {
+            $stok->where('content_code', 'like', $prefix . '%');
+        }
+
         $butuhMetadata = (clone $stok)
             ->whereNull('broadcast_filled_at')
             ->whereNotIn('status', ['Uploaded', 'Archived'])
@@ -151,6 +197,12 @@ class ContentController extends Controller
             'sudah_diposting' => $sudahDiposting->count(),
             'arsip'           => $arsip->count(),
             'total_stock'     => Content::where('upload_type', 'content_stock')->count(),
+            // ⚡ FIX (A2): rekap jumlah stok per kategori prefix (untuk tombol filter)
+            'per_prefix'      => Content::where('upload_type', 'content_stock')
+                ->selectRaw('substr(content_code, 1, 3) as pref, COUNT(*) as jumlah')
+                ->groupBy('pref')
+                ->pluck('jumlah', 'pref')
+                ->toArray(),
             'total_raw'       => Content::where('upload_type', 'raw')->count(),
             'total_activity'  => Content::where('upload_type', 'activity')->count(),
         ];
@@ -223,11 +275,12 @@ class ContentController extends Controller
     {
         $user = Auth::user();
 
-        if (!$this->canEditOrDeleteContent($user)) {
+        $content = Content::findOrFail($id);
+
+        // ⚡ FASE A6: atasan boleh; pengunggah konten Activity boleh mengedit miliknya sendiri
+        if (! $this->bolehKelolaKonten($user, $content)) {
             abort(403, 'Anda tidak berhak mengedit konten.');
         }
-
-        $content = Content::findOrFail($id);
 
         return view('contents.edit', [
             'title'    => 'Edit Konten: ' . $content->content_code,
@@ -240,7 +293,7 @@ class ContentController extends Controller
     {
         $user = Auth::user();
 
-        if (!$this->canEditOrDeleteContent($user)) {
+        if (! $this->bolehKelolaKonten($user, Content::findOrFail($id))) {
             abort(403, 'Anda tidak berhak mengedit konten.');
         }
 
@@ -277,11 +330,12 @@ class ContentController extends Controller
     {
         $user = Auth::user();
 
-        if (!$this->canEditOrDeleteContent($user)) {
+        $content = Content::findOrFail($id);
+
+        if (! $this->bolehKelolaKonten($user, $content)) {
             abort(403, 'Anda tidak berhak menghapus konten.');
         }
 
-        $content = Content::findOrFail($id);
         $content->delete();
 
         return redirect()->route('contents.index')
@@ -436,11 +490,10 @@ class ContentController extends Controller
         ]);
 
         $project = Project::findOrFail($request->project_id);
-        $isInvolved = $project->users()->where('users.id', $user->id)->exists();
-        $sameDivision = !empty($user->division)
-            && $project->users()->where('users.division', $user->division)->exists();
 
-        if (!$isInvolved && !$sameDivision && !$user->isManager()) {
+        // ⚡ FIX (A1/A3): pakai SATU aturan upload yang sama dengan stok & activity
+        // (dulu raw punya aturan sendiri, dan project yang sudah Completed masih bisa diupload)
+        if (! $this->canUserUploadToProject($user, $project)) {
             return back()->with('error', 'Anda tidak berhak upload ke project ini.');
         }
 
@@ -706,15 +759,25 @@ class ContentController extends Controller
 
     public function activityIndex()
     {
+        $user = Auth::user();
+
         $activities = Content::where('upload_type', 'activity')
             ->with('project')
             ->orderByDesc('created_at')
             ->get();
 
+        // ⚡ FASE A6: tombol Edit per activity mengikuti hak akses per-konten
+        // (pengunggahnya sendiri boleh; dulu tombolnya hanya untuk atasan).
+        $bisaEditPerId = $activities->mapWithKeys(
+            fn ($a) => [$a->id => $this->bolehKelolaKonten($user, $a)]
+        )->toArray();
+
         return view('contents.activity', [
-            'title'      => 'Activity',
-            'activities' => $activities,
-            'bisaEdit'   => $this->canEditOrDeleteContent(Auth::user()),
+            'title'         => 'Activity',
+            'activities'    => $activities,
+            'bisaEditPerId' => $bisaEditPerId,
+            // dipakai hanya untuk catatan hak akses di atas tabel
+            'bisaEdit'      => $this->canEditOrDeleteContent($user),
         ]);
     }
 

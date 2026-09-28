@@ -538,6 +538,25 @@
                         <a class="nav-link" href="{{ route('division.show', 'Tim AI Research') }}"><i class="fas fa-fw fa-desktop"></i><span>Tim AI Research</span></a>
                     </li>
                 @endif
+
+                {{-- ⚡ FASE A4: menu Activity & Bahan Raw untuk divisi selain Broadcast
+                     (Broadcast sudah punya di atas). Halaman Bahan Raw yang paling dipakai tim Editing. --}}
+                @if(!$isBroadcast)
+                    <hr class="sidebar-divider">
+                    <div class="sidebar-heading">Konten</div>
+                    <li class="nav-item {{ request()->routeIs('contents.activity') ? 'active' : '' }}">
+                        <a class="nav-link" href="{{ route('contents.activity') }}">
+                            <i class="fas fa-fw fa-running"></i>
+                            <span>Activity</span>
+                        </a>
+                    </li>
+                    <li class="nav-item {{ request()->routeIs('contents.raw') ? 'active' : '' }}">
+                        <a class="nav-link" href="{{ route('contents.raw') }}">
+                            <i class="fas fa-fw fa-file-import"></i>
+                            <span>Bahan Raw</span>
+                        </a>
+                    </li>
+                @endif
             @endif
 
             <hr class="sidebar-divider d-none d-md-block">

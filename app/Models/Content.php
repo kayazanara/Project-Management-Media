@@ -28,6 +28,8 @@ class Content extends Model
         // ⚡ FASE D: penanda bahan raw sudah diambil tim Editing
         'taken_at',
         'taken_by',
+        // ⚡ FASE A6: pengunggah konten (supaya ketua divisi bisa edit activity-nya sendiri)
+        'created_by',
     ];
 
     protected $casts = [
@@ -36,6 +38,20 @@ class Content extends Model
         'broadcast_filled_at' => 'datetime',
         'taken_at' => 'datetime',
     ];
+
+    /**
+     * ⚡ FASE A6: otomatis catat pengunggah konten.
+     * Dipasang di model supaya SEMUA jalur upload (stok, raw, activity, tambah manual)
+     * sekaligus tercatat — tanpa perlu diulang di tiap method controller.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Content $content) {
+            if (empty($content->created_by) && auth()->check()) {
+                $content->created_by = auth()->id();
+            }
+        });
+    }
 
     // ============================================================
     // UPLOAD TYPE CONSTANTS

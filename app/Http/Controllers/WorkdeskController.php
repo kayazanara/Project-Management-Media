@@ -107,16 +107,10 @@ class WorkdeskController extends Controller
     private function calculatePointsInRange(Carbon $start, Carbon $end): array
     {
         // ⚡ FIX: poin HANYA untuk task berstatus Completed.
-        // Sebelumnya semua task yang sudah punya bobot ikut memberi poin
-        // (termasuk Pending / In Progress) -> Top Members Workdesk salah.
+        // ⚡ FIX (B1): dan dihitung dari tanggal SELESAI (completed_at) pada periode terpilih,
+        // konsisten dengan halaman Monitoring & Dashboard.
         $tasks = ProjectTask::where('status', 'Completed')
-            ->where(function ($q) use ($start, $end) {
-                $q->whereBetween('task_date', [$start->toDateString(), $end->toDateString()])
-                  ->orWhere(function ($q2) use ($start, $end) {
-                      $q2->whereNull('task_date')
-                         ->whereBetween('created_at', [$start, $end]);
-                  });
-            })
+            ->whereBetween('completed_at', [$start, $end])
             ->with(['contributors:id', 'assignedUser:id'])
             ->get();
 
@@ -553,8 +547,11 @@ class WorkdeskController extends Controller
                 continue;
             }
 
-            // ⚡ FIX: atribusi sama dengan sistem poin (kontributor, fallback PIC)
-            $totalTasks = ProjectTask::where(function ($q) use ($memberIds) {
+            // ⚡ FIX (B3): penyebut memakai task yang SELESAI di rentang periode ini
+            // (sebelumnya total SEMUA task selamanya -> persentase tren harian menyesatkan).
+            $totalTasks = ProjectTask::where('status', 'Completed')
+                ->whereBetween('completed_at', [$start, $end])
+                ->where(function ($q) use ($memberIds) {
                     $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
                       ->orWhere(function ($q2) use ($memberIds) {
                           $q2->whereDoesntHave('contributors')
@@ -649,7 +646,9 @@ class WorkdeskController extends Controller
                     'last_login' => $u->last_login_date ? $u->last_login_date->format('d M') : 'Belum pernah',
                 ];
             })
-            ->filter(fn($u) => $u['points'] < 3)
+            // ⚡ FIX (C4): ambang "< 3 poin" itu arbitrer; diselaraskan dengan pita Monitoring
+            // (poin < 20 = "Ringan") supaya angka antar halaman konsisten.
+            ->filter(fn($u) => $u['points'] < 20)
             ->sortBy('points')
             ->take(5)
             ->values()

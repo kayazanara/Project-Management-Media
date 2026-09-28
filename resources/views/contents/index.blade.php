@@ -59,6 +59,21 @@
             </h6>
         </div>
         <div class="card-body">
+            {{-- ⚡ FIX (A2): filter & rekap per kategori prefix (DAK/DOK/MEM/PSB) --}}
+            <div class="mb-3">
+                <span class="small text-muted mr-2"><i class="fas fa-filter mr-1"></i>Kategori:</span>
+                <a href="{{ route('contents.index') }}"
+                   class="btn btn-sm {{ request('prefix') ? 'btn-outline-primary' : 'btn-primary' }}">
+                    Semua ({{ $stats['total_stock'] }})
+                </a>
+                @foreach (['DAK', 'DOK', 'MEM', 'PSB'] as $pfx)
+                    <a href="{{ route('contents.index', ['prefix' => $pfx]) }}"
+                       class="btn btn-sm {{ request('prefix') === $pfx ? 'btn-primary' : 'btn-outline-primary' }}">
+                        {{ $pfx }} ({{ $stats['per_prefix'][$pfx] ?? 0 }})
+                    </a>
+                @endforeach
+            </div>
+
             <ul class="nav nav-tabs mb-3" role="tablist">
                 <li class="nav-item">
                     <a class="nav-link active" data-toggle="tab" href="#tab-butuh">
@@ -159,6 +174,31 @@
                                                         @csrf
                                                         <button type="submit" class="btn btn-sm btn-warning" title="Batalkan posting">
                                                             <i class="fas fa-undo mr-1"></i> Batal Posting
+                                                        </button>
+                                                    </form>
+                                                @endif
+
+                                                {{-- ⚡ FIX (A5): tombol ARSIPKAN — dulu tab Arsip ada tapi TIDAK ADA cara memindahkan konten ke sana --}}
+                                                @if (in_array($tab['aksi'], ['post', 'unpost'], true) && $bisaKelola)
+                                                    <form action="{{ route('contents.status', $c->id) }}" method="POST" class="d-inline"
+                                                          onsubmit="return confirm('Arsipkan konten ini?');">
+                                                        @csrf
+                                                        @method('PATCH')
+                                                        <input type="hidden" name="status" value="Archived">
+                                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Arsipkan">
+                                                            <i class="fas fa-archive"></i>
+                                                        </button>
+                                                    </form>
+                                                @endif
+
+                                                @if ($tab['aksi'] === 'arsip' && $bisaKelola)
+                                                    <form action="{{ route('contents.status', $c->id) }}" method="POST" class="d-inline"
+                                                          onsubmit="return confirm('Keluarkan dari arsip (kembali ke Ready)?');">
+                                                        @csrf
+                                                        @method('PATCH')
+                                                        <input type="hidden" name="status" value="Ready">
+                                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Batalkan arsip">
+                                                            <i class="fas fa-undo mr-1"></i> Batalkan Arsip
                                                         </button>
                                                     </form>
                                                 @endif

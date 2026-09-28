@@ -13,11 +13,8 @@ use Illuminate\Support\Facades\Auth;
 
 class MonitoringController extends Controller
 {
-    /**
-     * ⚡ FASE 2: ambang status Workload Balance berdasarkan TOTAL POIN periode terpilih.
-     */
-    const OVERLOAD_POINTS = 65;      // >= 65 poin  -> Overload
-    const BALANCED_MIN_POINTS = 20;  // 20-64 poin  -> Seimbang, di bawahnya Ringan
+    // ⚡ B4: konstanta ambang poin (65/20) DIHAPUS — status Workload Balance sekarang
+    // ditentukan dari RASIO TASK AKTIF (lihat buildWorkloadBalance), bukan dari poin.
 
     public function index(Request $request)
     {
@@ -45,8 +42,7 @@ class MonitoringController extends Controller
             // ⚡ FIX: kirim periode supaya kartu Workload Balance ikut filter 7/30/90 hari
             // (sebelumnya dipanggil tanpa periode sehingga hasilnya identik untuk semua filter)
             'workload'        => $this->buildWorkloadBalance($start, $end),
-            'overloadPoints'  => self::OVERLOAD_POINTS,
-            'balancedMin'     => self::BALANCED_MIN_POINTS,
+
             'deadline'        => $this->buildDeadlineAdherence($start, $end),
             'alerts'          => $this->buildAlerts(),
             'divisionSummary' => $this->buildDivisionSummary($start, $end),

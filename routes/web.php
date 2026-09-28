@@ -164,8 +164,14 @@ Route::middleware(['auth'])->group(function () {
     // ==========================================
     // STOCK MANAGEMENT
     // ==========================================
+    // ⚡ FASE A6: edit/update/destroy dipindah keluar grup Broadcast supaya pengunggah Activity
+    // (ketua divisi mana pun) bisa mengelola miliknya sendiri. Hak akses tetap dijaga di controller.
+    Route::get('/contents/{id}/edit', [ContentController::class, 'edit'])->name('contents.edit');
+    Route::put('/contents/{id}', [ContentController::class, 'update'])->name('contents.update');
+    Route::delete('/contents/{id}', [ContentController::class, 'destroy'])->name('contents.destroy');
+
     Route::middleware(['divisi.access:pembina|broadcast|manager'])->group(function () {
-        Route::resource('contents', ContentController::class)->except(['show']);
+        Route::resource('contents', ContentController::class)->except(['show', 'edit', 'update', 'destroy']);
         Route::patch('/contents/{id}/status', [ContentController::class, 'updateStatus'])->name('contents.status');
 
         // ⚡ Alur baru: Ready -> Sudah Diposting (dan bisa dibatalkan)
