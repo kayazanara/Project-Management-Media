@@ -741,6 +741,13 @@
                     <i class="fas fa-fw fa-chart-bar"></i>
                     <span>Monitoring Tim</span></a>
             </li>
+
+            {{-- ⚡ FITUR BARU: Kinerja Ketua Media (Pembina only) --}}
+            <li class="nav-item {{ request()->routeIs('kinerja.*') ? 'active' : '' }}">
+                <a class="nav-link" href="{{ route('kinerja.ketuaMedia') }}">
+                    <i class="fas fa-fw fa-user-tie"></i>
+                    <span>Kinerja Ketua Media</span></a>
+            </li>
             @endif
 
             <hr class="sidebar-divider">

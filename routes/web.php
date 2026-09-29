@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WorkdeskController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\MonitoringController;
+use App\Http\Controllers\KetuaMediaPerformanceController;
 
 Route::get('/', function () {
     return redirect('/login');
@@ -51,6 +52,17 @@ Route::middleware(['auth'])->group(function () {
         // ⚡ FASE 3: riwayat poin anggota (JSON, dipakai modal Team Directory)
         Route::get('/monitoring/point-history/{id}', [MonitoringController::class, 'pointHistory'])
             ->name('monitoring.pointHistory');
+
+        // ⚡ FITUR BARU: Kinerja Ketua Media (khusus Pembina) — memantau apakah
+        // Ketua Media benar-benar memastikan tugas & project tiap divisi lancar.
+        Route::get('/kinerja-ketua-media', [KetuaMediaPerformanceController::class, 'index'])
+            ->name('kinerja.ketuaMedia');
+
+        Route::post('/kinerja-ketua-media/catatan', [KetuaMediaPerformanceController::class, 'storeEvaluation'])
+            ->name('kinerja.evaluasi.store');
+
+        Route::delete('/kinerja-ketua-media/catatan/{id}', [KetuaMediaPerformanceController::class, 'destroyEvaluation'])
+            ->name('kinerja.evaluasi.destroy');
     });
 
     // ==========================================

@@ -21,6 +21,9 @@ class Project extends Model
         'approved_by_pembina_at' => 'datetime',
         'approved_by_ketua_at' => 'datetime',
         'is_overdue' => 'boolean',
+        // ⚡ FITUR: penanda untuk mengukur kecepatan alur Ketua Media
+        'task_submitted_at' => 'datetime',
+        'review_requested_at' => 'datetime',
     ];
 
     // ============================================================

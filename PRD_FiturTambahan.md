@@ -635,3 +635,50 @@ Semua halaman diupdate ke gradient biru-ungu:
 background: linear-gradient(135deg, #4e73df 0%, #5b5dd8 35%, #6f5bcf 65%, #8b5cf6 100%);
 ```
 
+---
+
+## 🎯 PART 12 — FITUR: KINERJA KETUA MEDIA (29 Sep 2026)
+
+**Menu:** `Kinerja Ketua Media` (sidebar, **khusus Pembina Media**) · **Route:** `/kinerja-ketua-media`
+
+### 12.1 Tujuan
+Membantu Pembina memantau & mengukur apakah **Ketua Media** benar-benar menjalankan
+tugasnya: **memastikan semua tugas & project tiap divisi berjalan lancar**.
+Karena itu penilaiannya bukan "berapa task yang dia kerjakan sendiri", tapi 4 pilar.
+
+### 12.2 Empat Pilar & Bobot
+
+| Pilar | Bobot | Isi |
+|---|---|---|
+| 🏥 Kesehatan Divisi | 40% | per divisi: rasio task terlambat, project lewat deadline, ketepatan waktu |
+| ⚡ Kecepatan Alur | 20% | lama menyusun task (Planning → diajukan), lama tunggu ACC, jumlah yang menunggu tindakannya |
+| 🤝 Keterlibatan | 20% | rapat/notulen yang dia buat, catatan revisi yang dia tulis, alert Workdesk yang dibuka, hari aktif login |
+| 🎯 Ketuntasan | 20% | project selesai tepat deadline, rata-rata progress project aktif, panjang siklus project |
+
+### 12.3 Aturan agar angkanya jujur
+- **Semua pilar dihitung per periode** (7/30/90 hari) — tren bulan lampau tidak berubah tiap halaman dibuka.
+- **Pilar tanpa data dikeluarkan** dari penilaian; bobotnya dibagikan proporsional ke pilar lain
+  (tidak dianggap 0 karena dihukum, tidak dianggap 100 karena "kembung").
+- **Periode tanpa jejak data = skor kosong (`—`)**, bukan 0.
+- **Data anomali dilewati** (mis. `completed_at` lebih awal dari `created_at` pada data demo).
+- Ambang & penalti terpusat di konstanta `KetuaMediaPerformance::TARGET`, `::PENALTI`, `::TURUN_PER_HARI` — gampang dikalibrasi.
+
+### 12.4 Sumber data (tanpa tabel baru untuk penilaian)
+- Kolom baru di `projects` (aditif, NULL untuk data lama): `task_submitted_at`, `task_submitted_by`, `review_requested_at`
+  — dipakai mengukur kecepatan alur secara **jujur** (bukan menebak dari `updated_at`).
+- Tabel baru `ketua_media_evaluations` = **Catatan Evaluasi Pembina** per periode,
+  menyimpan **snapshot skor** saat catatan dibuat.
+- Divisi **tidak di-hardcode**: ditarik dari user (`kepala_divisi`/`anggota`), jadi divisi baru otomatis ikut.
+- Pemetaan project → divisi memakai anggota project (`project_user`), jadi 1 project bisa masuk beberapa divisi.
+
+### 12.5 Hak akses
+Hanya Pembina Media — dijaga **dua lapis**: middleware `divisi.access:pembina` di route +
+pemeriksaan ulang di controller (`abort(403)`). Ketua Media/Kepala Divisi/Anggota = 403.
+Menu di sidebar hanya tampil untuk Pembina.
+
+### 12.6 Uji
+`tests/Feature/KinerjaKetuaMediaTest.php` — 27 tes (hak akses, 4 pilar, penurunan skor karena
+task telat/project lewat deadline, pembagian bobot, tren kosong, penanda waktu workflow,
+bottleneck, catatan evaluasi + regresi tanggal `Y-m-d`).
+
+

@@ -454,7 +454,13 @@ class ProjectController extends Controller
             return back()->with('error', 'Susun minimal 1 task sebelum ajukan ke tahap Task Review.');
         }
 
-        $project->update(['status' => Project::STATUS_TASK_REVIEW]);
+        $project->update([
+            'status'            => Project::STATUS_TASK_REVIEW,
+            // ⚡ FITUR: penanda waktu & pelaku pengajuan task — dasar ukur kecepatan
+            // alur di halaman "Kinerja Ketua Media" (Planning -> Task Review).
+            'task_submitted_at' => now(),
+            'task_submitted_by' => $user->id,
+        ]);
 
         if ($user->isKetuaMedia()) {
             $pembinaUsers = User::where('division_role', 'pembina')
@@ -631,7 +637,13 @@ class ProjectController extends Controller
             'file_url'   => $request->file_url,
         ]);
 
-        $project->update(['status' => Project::STATUS_REVIEW]);
+        $project->update([
+            'status' => Project::STATUS_REVIEW,
+            // ⚡ FITUR: penanda kapan project MASUK tahap Review — dasar ukur
+            // "berapa lama menunggu ACC Ketua Media" di halaman Kinerja Ketua Media.
+            // Diperbarui lagi tiap kali diajukan ulang setelah revisi (per babak review).
+            'review_requested_at' => now(),
+        ]);
 
         $recipients = User::whereIn('division_role', ['pembina', 'ketua_media'])
             ->where('status', 'Aktif')
