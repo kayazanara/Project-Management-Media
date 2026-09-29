@@ -107,8 +107,10 @@ class ProfileController extends Controller
 
         Storage::disk('public')->put('backgrounds/' . $filename, $imageBinary);
 
-        if ($user->background_image && Storage::exists('public/backgrounds/' . $user->background_image)) {
-            Storage::delete('public/backgrounds/' . $user->background_image);
+        // ⚡ AUDIT: path salah ('public/...' padahal disk-nya sudah 'public') ->
+        // background LAMA tidak pernah terhapus dan menumpuk di storage.
+        if ($user->background_image && Storage::disk('public')->exists('backgrounds/' . $user->background_image)) {
+            Storage::disk('public')->delete('backgrounds/' . $user->background_image);
         }
 
         $user->background_image = $filename;

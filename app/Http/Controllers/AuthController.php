@@ -49,16 +49,23 @@ class AuthController extends Controller
         $user = auth()->user();
         $imageData = $request->input('cropped_avatar');
 
-        list($type, $imageData) = explode(';', $imageData);
-        list(, $imageData) = explode(',', $imageData);
+        list($type, $imageData) = array_pad(explode(';', $imageData, 2), 2, '');
+        list(, $imageData) = array_pad(explode(',', $imageData, 2), 2, '');
+
+        if ($imageData === '') {
+            return back()->with('error', 'Format gambar tidak dikenali. Coba ulangi crop fotonya.');
+        }
+
         $imageBinary = base64_decode($imageData);
 
         $filename = time() . '_' . uniqid() . '.jpg';
 
         Storage::disk('public')->put('avatars/' . $filename, $imageBinary);
 
-        if ($user->avatar && Storage::exists('public/avatars/' . $user->avatar)) {
-            Storage::delete('public/avatars/' . $user->avatar);
+        // ⚡ AUDIT: dulu path-nya salah ('public/avatars/...' padahal disk-nya sudah 'public')
+        // sehingga foto LAMA tidak pernah terhapus -> menumpuk di storage.
+        if ($user->avatar && Storage::disk('public')->exists('avatars/' . $user->avatar)) {
+            Storage::disk('public')->delete('avatars/' . $user->avatar);
         }
 
         $user->avatar = $filename;

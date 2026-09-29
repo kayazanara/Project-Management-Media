@@ -222,6 +222,27 @@ class ProjectController extends Controller
     public function destroy($id)
     {
         $project = Project::findOrFail($id);
+
+        // ⚡ AUDIT: dulu project dihapus TANPA membersihkan task & revisinya -> lahir baris
+        // yatim yang MASIH ikut terhitung di Monitoring/Workdesk (termasuk poinnya).
+        // Sekarang: konten (hasil kerja tim) menolak dihapus; task + kontributor + revisi
+        // (bagian internal project) dibersihkan sekalian.
+        $jumlahKonten = \App\Models\Content::where('project_id', $project->id)->count();
+
+        if ($jumlahKonten > 0) {
+            return redirect()->route('projects.index')->with(
+                'error',
+                "Project ini masih terhubung dengan {$jumlahKonten} konten. Hapus atau pindahkan kontennya dulu supaya karya tim tidak hilang tanpa jejak."
+            );
+        }
+
+        $project->tasks()->get()->each(function ($task) {
+            $task->contributors()->detach();
+            $task->delete();
+        });
+
+        \App\Models\ProjectRevision::where('project_id', $project->id)->delete();
+
         $project->users()->detach();
         $project->delete();
 

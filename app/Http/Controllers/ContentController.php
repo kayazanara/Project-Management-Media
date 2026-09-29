@@ -256,7 +256,9 @@ class ContentController extends Controller
             'project_id'   => $request->project_id,
             'title'        => $request->title,
             'type'         => $request->type,
-            'platform'     => $request->platform,
+            // ⚡ AUDIT: kolom platform NOT NULL tanpa default. Kalau form lama dikirim tanpa
+            // memilih platform sama sekali, $request->platform = null -> insert gagal (error 500).
+            'platform'     => $request->platform ?? [],
             'file_url'     => $request->file_url,
             'caption'      => $request->caption,
             'upload_type'  => 'content_stock',
