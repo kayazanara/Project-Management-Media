@@ -500,4 +500,30 @@ class WhatsappNotifier
             . "🔗 *Cek Konten*\n{$url}\n\n"
             . "*— Mas Khoir*";
     }
+
+    // ============================================================
+    // 15. PROJECT DILANJUTKAN TANPA ACC KETUA MEDIA (override Pembina)
+    // ============================================================
+
+    public function projectOverrideApprovedTemplate(
+        string $nama,
+        string $namaProject,
+        string $namaPembina,
+        string $alasan,
+        int $projectId
+    ): string {
+        $url = url("/projects/{$projectId}");
+
+        return "⚡ *Project Dilanjutkan (Tanpa Menunggu ACC Ketua Media)*\n\n"
+            . "Assalamu'alaikum, {$nama} 👋\n\n"
+            . "Project berikut sudah disetujui dan LANGSUNG dilanjutkan ke tahap *Upload*:\n\n"
+            . "📌 *{$namaProject}*\n"
+            . "✍️ Dilanjutkan oleh: *{$namaPembina}* (Pembina Media)\n\n"
+            . "📝 *Alasan:*\n{$alasan}\n\n"
+            . "Catatan: keputusan ini diambil supaya pengerjaan tidak tertahan, jadi ACC Ketua Media\n"
+            . "belum tercatat untuk project ini (tertulis \"Belum ACC\" di halaman project).\n\n"
+            . "Silakan lanjutkan proses upload konten (raw/stock/activity) supaya project bisa ditutup.\n\n"
+            . "🔗 *Buka Project*\n{$url}\n\n"
+            . "*— Pembina Media*";
+    }
 }

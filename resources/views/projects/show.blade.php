@@ -116,6 +116,34 @@
             </div>
             <div class="card-body">
 
+                {{-- ⚡ JEJAK OVERRIDE: project dilanjutkan Pembina tanpa ACC Ketua Media --}}
+                @if($project->approved_override_at)
+                    <div class="alert alert-warning border-left-warning mb-3">
+                        <h6 class="font-weight-bold mb-2">
+                            <i class="fas fa-bolt mr-1"></i> Dilanjutkan oleh Pembina (tanpa ACC Ketua Media)
+                        </h6>
+
+                        {{-- Status ACC tetap ditampilkan apa adanya: Ketua Media memang BELUM ACC --}}
+                        <div class="mb-2">
+                            <span class="badge badge-success px-2 py-1 mr-1">
+                                <i class="fas fa-shield-alt mr-1"></i>Pembina: APPROVED
+                            </span>
+                            <span class="badge badge-secondary px-2 py-1">
+                                <i class="fas fa-crown mr-1"></i>Ketua Media: Belum ACC
+                            </span>
+                        </div>
+
+                        <div class="small mb-1">
+                            Dilanjutkan oleh <strong>{{ $project->approvedOverrideBy->name ?? 'Pembina Media' }}</strong>
+                            pada {{ $project->approved_override_at->translatedFormat('d M Y, H:i') }}
+                            — ACC Ketua Media <strong>tidak tercatat</strong> untuk project ini.
+                        </div>
+                        <div class="small p-2 rounded bg-white" style="white-space: pre-line;">
+                            <strong>Alasan:</strong> {{ $project->approved_override_note }}
+                        </div>
+                    </div>
+                @endif
+
                 {{-- 1. PLANNING --}}
                 @if($project->status === 'Planning')
                     <div class="text-center py-3">
@@ -371,10 +399,24 @@
                                             </button>
                                         </form>
                                     @endif
+                                    {{-- ⚡ FITUR BARU: khusus Pembina — setujui & langsung lanjut tanpa menunggu Ketua Media --}}
+                                    @if($isPembina)
+                                        <button type="button" class="btn btn-warning" data-toggle="modal" data-target="#approveOverrideModal"
+                                                title="Setujui dan lanjutkan project tanpa menunggu ACC Ketua Media">
+                                            <i class="fas fa-bolt mr-1"></i> Setujui &amp; Lanjut Sekarang
+                                        </button>
+                                    @endif
                                     <button class="btn btn-danger" data-toggle="modal" data-target="#revisionModal">
                                         <i class="fas fa-redo mr-1"></i> Minta Revisi
                                     </button>
                                 </div>
+                                @if($isPembina)
+                                    <div class="small text-muted mt-2">
+                                        <i class="fas fa-info-circle mr-1"></i>
+                                        Tombol <strong>Setujui &amp; Lanjut Sekarang</strong> dipakai kalau project mandek
+                                        menunggu ACC Ketua Media. Jejak + alasannya wajib diisi dan akan tercatat.
+                                    </div>
+                                @endif
                             </div>
                         @endif
                     </div>
@@ -950,6 +992,46 @@
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="fas fa-save mr-1"></i>
                         {{ $project->status === 'Scoring' ? 'Update Scoring' : 'Simpan Scoring' }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    @endif
+
+    {{-- ⚡ Modal: Setujui & Lanjut Sekarang (Pembina, tanpa ACC Ketua Media) --}}
+    @if($isPembina && $project->status === 'Review')
+    <div class="modal fade" id="approveOverrideModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <form action="{{ route('projects.approveOverride', $project->id) }}" method="POST" class="modal-content">
+                @csrf @method('PATCH')
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title font-weight-bold">
+                        <i class="fas fa-bolt mr-1"></i> Setujui &amp; Lanjut Sekarang
+                    </h5>
+                    <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning small mb-3">
+                        <strong>Perhatian:</strong> project akan <strong>langsung masuk tahap Upload</strong>
+                        tanpa menunggu ACC Ketua Media. Di halaman ini ACC Ketua Media tetap tertulis
+                        <strong>Belum ACC</strong> — jadi tidak ada data yang berpura-pura sudah di-ACC.
+                        Jejak (siapa &amp; kapan) serta alasan di bawah ini akan tercatat, dan Ketua Media
+                        beserta tim tetap dikabari lewat WhatsApp.
+                    </div>
+
+                    <div class="form-group mb-0">
+                        <label class="font-weight-bold">Alasan <span class="text-danger">*</span></label>
+                        <textarea name="note" class="form-control" rows="4" minlength="10" required
+                                  placeholder="Contoh: Pengerjaan sudah selesai dan deadline tinggal 2 hari, Ketua Media belum bisa ACC. Saya lanjutkan supaya tim bisa segera upload.">{{ old('note') }}</textarea>
+                        <small class="text-muted">Minimal 10 karakter. Alasan ini ikut terkirim ke Ketua Media &amp; tim.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-warning"
+                            onclick="return confirm('Yakin lanjutkan project ini tanpa ACC Ketua Media?')">
+                        <i class="fas fa-bolt mr-1"></i> Ya, Setujui &amp; Lanjutkan
                     </button>
                 </div>
             </form>

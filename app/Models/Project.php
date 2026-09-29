@@ -24,6 +24,9 @@ class Project extends Model
         // ⚡ FITUR: penanda untuk mengukur kecepatan alur Ketua Media
         'task_submitted_at' => 'datetime',
         'review_requested_at' => 'datetime',
+        // ⚡ FITUR: "Setujui & Lanjut Sekarang" (Pembina melanjutkan tanpa ACC Ketua Media)
+        'approved_override_at' => 'datetime',
+        'approved_override_by' => 'integer',
     ];
 
     // ============================================================
@@ -108,6 +111,22 @@ class Project extends Model
     public function openRevisions()
     {
         return $this->hasMany(ProjectRevision::class)->whereNull('resolved_at');
+    }
+
+    /**
+     * ⚡ FITUR: Pembina yang melanjutkan project tanpa ACC Ketua Media (kalau ada).
+     */
+    public function approvedOverrideBy()
+    {
+        return $this->belongsTo(User::class, 'approved_override_by');
+    }
+
+    /**
+     * Apakah project ini dilanjutkan Pembina tanpa ACC Ketua Media?
+     */
+    public function getDilanjutkanTanpaKetuaMediaAttribute(): bool
+    {
+        return ! is_null($this->approved_override_at);
     }
 
     public function contents()

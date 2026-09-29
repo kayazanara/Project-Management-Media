@@ -110,6 +110,10 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/projects/{id}/approve', [ProjectController::class, 'approve'])
         ->name('projects.approve');
 
+    // ⚡ FITUR BARU: Pembina menyetujui & melanjutkan TANPA menunggu ACC Ketua Media
+    Route::patch('/projects/{id}/approve-override', [ProjectController::class, 'approveOverride'])
+        ->name('projects.approveOverride');
+
     Route::patch('/projects/{id}/mark-complete', [ProjectController::class, 'markComplete'])
         ->name('projects.markComplete');
 

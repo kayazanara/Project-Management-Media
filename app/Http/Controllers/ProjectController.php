@@ -812,6 +812,89 @@ class ProjectController extends Controller
     }
 
     // ============================================================
+    // WORKFLOW: 6b. APPROVE + LANJUT TANPA MENUNGGU KETUA MEDIA (Pembina)
+    // ============================================================
+
+    /**
+     * ⚡ FITUR BARU: Pembina menyetujui project SEKALIGUS melanjutkannya ke tahap Upload
+     * tanpa menunggu ACC Ketua Media. Dipakai kalau project mandek di Review.
+     *
+     * ATURAN (biar datanya tetap jujur):
+     * - HANYA Pembina Media, dan hanya saat status Review.
+     * - Alasan WAJIB (min 10 karakter) → tercatat siapa, kapan, dan kenapa.
+     * - `approved_by_ketua_at` SENGAJA TIDAK DIISI: Ketua Media memang belum menyetujui,
+     *   jadi di halaman project tetap tertulis "Belum ACC" + penanda "Dilanjutkan oleh Pembina".
+     */
+    public function approveOverride(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $user    = Auth::user();
+
+        if (! $user->isPembina()) {
+            return back()->with('error', 'Hanya Pembina Media yang bisa melanjutkan project tanpa ACC Ketua Media.');
+        }
+
+        if ($project->status !== Project::STATUS_REVIEW) {
+            return back()->with('error', 'Project tidak dalam tahap Review.');
+        }
+
+        $validated = $request->validate([
+            'note' => 'required|string|min:10|max:1000',
+        ], [
+            'note.required' => 'Alasan wajib diisi supaya jejak keputusannya jelas.',
+            'note.min'      => 'Alasan minimal 10 karakter.',
+        ]);
+
+        $update = [
+            // Review -> langsung Upload (melewati syarat ACC dua pihak)
+            'status'                 => Project::STATUS_UPLOAD,
+            'approved_override_by'   => $user->id,
+            'approved_override_at'   => now(),
+            'approved_override_note' => $validated['note'],
+        ];
+
+        // Kalau Pembina belum ACC sebelumnya, opsi ini sekaligus mencatat ACC dia
+        if (! $project->approved_by_pembina_at) {
+            $update['approved_by_pembina_at'] = now();
+        }
+
+        // ⚡ approved_by_ketua_at TIDAK diisi — dengan sengaja (lihat komentar di atas).
+
+        $project->update($update);
+
+        $this->workflow->resolveOpenRevisions($project);
+
+        // Jejak audit yang ikut tampil di riwayat project.
+        // ⚡ resolved_at diisi langsung: ini CATATAN/jejak keputusan, bukan pekerjaan
+        // yang masih menggantung — supaya tidak ikut terhitung sebagai "revisi terbuka".
+        ProjectRevision::create([
+            'project_id'  => $project->id,
+            'user_id'     => $user->id,
+            'type'        => 'approve_override',
+            'note'        => 'Dilanjutkan ke tahap Upload tanpa ACC Ketua Media. Alasan: ' . $validated['note'],
+            'resolved_at' => now(),
+        ]);
+
+        $recipients = $this->getProjectRecipients($project, $user->id);
+
+        $this->notifyUsers(
+            $recipients,
+            'project_approved_override',
+            $project->id,
+            fn($notifier, $u) => $notifier->projectOverrideApprovedTemplate(
+                $u->name,
+                $project->name,
+                $user->name,
+                $validated['note'],
+                $project->id
+            )
+        );
+
+        return redirect()->route('projects.show', $id)
+            ->with('success', '⚡ Project dilanjutkan ke tahap Upload tanpa menunggu ACC Ketua Media. Jejak & alasan sudah tercatat.');
+    }
+
+    // ============================================================
     // WORKFLOW: 7. MARK COMPLETE
     // ============================================================
 

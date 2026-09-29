@@ -749,5 +749,43 @@ Jendela & daftar "sekali saja" terpusat di konstanta `WhatsappNotifier::TIPE_SEK
 user non-aktif, user tanpa nomor, anti-dobel pesan identik, kejadian berulang tetap
 terkirim, job mati sudah dihapus).
 
+---
+
+## ⚡ PART 14 — "SETUJUI & LANJUT SEKARANG" (Pembina, tanpa menunggu ACC Ketua Media)
+
+**Masalah:** project bisa mandek di tahap Review kalau Ketua Media belum/bidak bisa ACC.
+Pembina butuh jalan keluar tanpa mengubah aturan normal (dua pihak ACC).
+
+### 14.1 Dua opsi di tahap Review (khusus Pembina)
+
+| Opsi | Perilaku |
+|---|---|
+| **Approve** (seperti biasa) | Menyimpan ACC Pembina, project **tetap menunggu** ACC Ketua Media |
+| **⚡ Setujui & Lanjut Sekarang** | Akhiri Review → project **langsung masuk tahap Upload**, tanpa menunggu Ketua Media |
+
+Ketua Media hanya punya opsi `Approve` biasa (tidak bisa memakai override).
+
+### 14.2 Aturan & kejujuran data
+
+- **Hanya Pembina**, hanya saat `status = 'Review'`.
+- **Alasan WAJIB** (min 10 karakter) — tersimpan dan ikut dikirim ke Ketua Media & tim.
+- ⚡ **`approved_by_ketua_at` TIDAK diisi.** Ketua Media memang belum menyetujui, jadi di
+  halaman project tetap tertulis **"Ketua Media: Belum ACC"** dengan penanda
+  **"Dilanjutkan oleh Pembina (tanpa ACC Ketua Media)"** + alasan + siapa & kapan.
+- Jejak juga masuk **riwayat project** (`project_revisions`, type `approve_override`)
+  dengan `resolved_at` terisi supaya tidak dihitung sebagai "revisi terbuka".
+- Revisi yang masih terbuka ikut ditutup (`resolveOpenRevisions`).
+- Notifikasi WA khusus (`project_approved_override`) ke anggota project + Ketua Media.
+
+### 14.3 Kolom baru (aditif, NULL untuk data lama)
+`projects.approved_override_by`, `projects.approved_override_at`, `projects.approved_override_note`.
+
+### 14.4 Uji
+`tests/Feature/ApproveOverrideTest.php` — 12 tes: alur utama, `approved_by_ketua_at` tetap
+kosong, jejak lengkap, revisi ditutup, alasan wajib & minimal 10 karakter, hak akses
+(Ketua Media / Kepala Divisi / Anggota ditolak), hanya saat Review, notifikasi khusus,
+tombol hanya untuk Pembina, penanda + "Belum ACC" tetap tampil setelah override.
+
+
 
 
