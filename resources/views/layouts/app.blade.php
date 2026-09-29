@@ -303,15 +303,50 @@
 <body id="page-top">
 
     {{-- WELCOME ANIMATION OVERLAY --}}
+    @php $reward = session('login_reward'); @endphp
+
     @if(session('show_welcome'))
         <div id="welcomeOverlay" class="welcome-overlay">
             <div class="welcome-content">
                 <div class="welcome-salam">Selamat Datang</div>
                 <div class="welcome-name">{{ session('welcome_user_name') }}</div>
                 <div class="welcome-line"></div>
-                <div class="welcome-sub">Semangat berkarya hari ini ✨</div>
+
+                @if($reward)
+                    {{-- ⚡ FITUR BARU: bonus login harian — angka streak bergulir lalu muncul poinnya --}}
+                    <div class="welcome-sub">Kamu dapat bonus login harian 🎁</div>
+
+                    <div class="streak-box">
+                        <div class="streak-label">🔥 Streak Login</div>
+                        <div class="streak-number"><span id="streakCounter">0</span><small> hari</small></div>
+                    </div>
+
+                    <div id="rewardPoin" class="reward-poin">
+                        <span class="poin-label">Poin hari ini</span>
+                        <span class="poin-value">+{{ $reward['points'] }}</span>
+                    </div>
+                @else
+                    <div class="welcome-sub">Semangat berkarya hari ini ✨</div>
+                @endif
             </div>
         </div>
+
+        @if($reward)
+            <style>
+                .streak-box { margin-top: 16px; }
+                .streak-label { font-size: .8rem; letter-spacing: 3px; text-transform: uppercase; opacity: .75; }
+                .streak-number { font-size: 4.6rem; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums;
+                                 text-shadow: 0 0 26px rgba(255, 255, 255, .35); }
+                .streak-number small { font-size: 1.1rem; font-weight: 600; opacity: .8; }
+                .reward-poin { margin-top: 12px; opacity: 0; transform: translateY(14px) scale(.85);
+                               transition: all .45s cubic-bezier(.2, .9, .3, 1.5); }
+                .reward-poin.show { opacity: 1; transform: translateY(0) scale(1); }
+                .poin-label { display: block; font-size: .75rem; letter-spacing: 3px; text-transform: uppercase; opacity: .75; }
+                .poin-value { display: inline-block; margin-top: 6px; padding: 4px 24px; border-radius: 999px;
+                              background: rgba(255, 255, 255, .18); border: 1px solid rgba(255, 255, 255, .4);
+                              font-size: 2rem; font-weight: 800; }
+            </style>
+        @endif
 
         <script>
             function playWelcomeSound() {
@@ -361,10 +396,55 @@
 
             setTimeout(playWelcomeSound, 200);
 
+            @if($reward)
+            // ⚡ FITUR BARU: angka bergulir cepat, lalu berhenti tepat di TOTAL STREAK
+            (function () {
+                var target = {{ (int) $reward['streak'] }};
+                var el = document.getElementById('streakCounter');
+                if (!el) return;
+
+                var mulai = Date.now();
+                var durasi = 1500;   // total durasi animasi (ms)
+
+                function frame() {
+                    var t = Math.min((Date.now() - mulai) / durasi, 1);
+
+                    if (t >= 1) {
+                        el.textContent = target;     // berhenti tepat di angka streak
+                        return;
+                    }
+
+                    if (t > 0.72) {
+                        // fase melambat: makin dekat ke angka sebenarnya
+                        el.textContent = Math.max(1, Math.round(target * (1 - Math.pow(1 - t, 2))));
+                        setTimeout(frame, 150);
+                    } else {
+                        // fase berputar cepat (efek scrolling angka)
+                        el.textContent = Math.floor(Math.random() * (target + 9)) + 1;
+                        setTimeout(frame, 45);
+                    }
+                }
+
+                frame();
+            })();
+
+            // Poin hari ini muncul setelah angka berhenti
+            setTimeout(function () {
+                var poin = document.getElementById('rewardPoin');
+                if (poin) poin.classList.add('show');
+            }, 1600);
+
+            // Auto-tutup setelah semua tampil
+            setTimeout(function () {
+                var overlay = document.getElementById('welcomeOverlay');
+                if (overlay) overlay.remove();
+            }, 4600);
+            @else
             setTimeout(function () {
                 var overlay = document.getElementById('welcomeOverlay');
                 if (overlay) overlay.remove();
             }, 3100);
+            @endif
         </script>
     @endif
 

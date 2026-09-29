@@ -27,6 +27,8 @@ class ProfileController extends Controller
             'completed_tasks'    => $user->contributedTasks()->where('status', 'Completed')->count(),
             'member_since_days'  => (int) \Carbon\Carbon::parse($user->created_at)->diffInDays(now()),
             'login_days'         => $user->total_login_days ?? 0,
+            // ⚡ FITUR BARU: streak login (hari berturut-turut) untuk ditampilkan di profil
+            'login_streak'       => $user->login_streak ?? 0,
         ];
 
         $recentTasks = $user->contributedTasks()

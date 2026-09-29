@@ -137,6 +137,15 @@ class WorkdeskController extends Controller
             }
         }
 
+        // FITUR BARU: tambahkan bonus login harian per anggota (sumber tunggal: DailyLoginReward)
+        foreach (app(\App\Services\DailyLoginReward::class)->pointsPerUser($start, $end) as $uid => $poinLogin) {
+            if (! isset($result[$uid])) {
+                $result[$uid] = ['points' => 0, 'tasks' => 0];
+            }
+
+            $result[$uid]['points'] += $poinLogin;
+        }
+
         return $result;
     }
 

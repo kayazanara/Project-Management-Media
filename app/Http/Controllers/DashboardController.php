@@ -139,10 +139,13 @@ class DashboardController extends Controller
         }
 
         // Ambil user yang punya poin, map, dan sort
+        // FITUR BARU: gabungkan poin bonus login harian (sumber tunggal: DailyLoginReward)
+        $poinLogin = app(\App\Services\DailyLoginReward::class)->pointsPerUser($start, $end);
+
         $topMembers = User::whereIn('id', array_keys($userPoints))
             ->get()
-            ->map(function ($u) use ($userPoints, $userTaskCounts) {
-                $u->points = round($userPoints[$u->id] ?? 0);
+            ->map(function ($u) use ($userPoints, $userTaskCounts, $poinLogin) {
+                $u->points = round($userPoints[$u->id] ?? 0) + ($poinLogin[$u->id] ?? 0);
                 $u->task_points_count = $userTaskCounts[$u->id] ?? 0;
                 return $u;
             })

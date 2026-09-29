@@ -68,7 +68,11 @@ class MonitoringController extends Controller
         $end   = now()->endOfDay();
 
         $user  = User::findOrFail($id);
-        $items = $this->buildPointHistory($user, $start, $end);
+        // FITUR BARU: riwayat poin juga memuat bonus login harian
+        $items = array_merge(
+            $this->buildPointHistory($user, $start, $end),
+            app(\App\Services\DailyLoginReward::class)->history($user, $start, $end)
+        );
 
         return response()->json([
             'user' => [
@@ -415,7 +419,7 @@ class MonitoringController extends Controller
                 'division_role'      => $u->division_role,
                 'theme_gradient'     => $theme['bg'],
                 'theme_solid'        => $theme['solid'],
-                'points'             => round($points),
+                'points' => round($points) + ($this->poinLogin($start, $end)[$u->id] ?? 0),
                 'total_tasks'        => $taskCount,
                 'completed_tasks'    => $completedCount,
                 'on_time_count'      => $onTimeCount,
@@ -571,7 +575,7 @@ class MonitoringController extends Controller
                 'avatar'          => $user->avatar,
                 'division'        => $user->division ?? '-',
                 'division_role'   => $user->division_role ?? 'anggota',
-                'points'          => round($points),
+                'points' => round($points) + ($this->poinLogin($start, $end)[$user->id] ?? 0),
                 'total_tasks'     => $taskCount,
                 'completed_tasks' => $completedCount,
                 'on_time_count'   => $onTimeCount,
@@ -584,6 +588,24 @@ class MonitoringController extends Controller
         usort($result, fn($a, $b) => $b['points'] <=> $a['points']);
 
         return $result;
+    }
+
+    /**
+     * FITUR BARU: satu sumber poin bonus login harian untuk halaman ini.
+     * Hasilnya di-cache per periode dalam satu request supaya tidak query berulang
+     * dan angka di semua kolom pasti sama.
+     */
+    private array $cachePoinLogin = [];
+
+    private function poinLogin(Carbon $start, Carbon $end): array
+    {
+        $kunci = $start->toDateString() . '|' . $end->toDateString();
+
+        if (! isset($this->cachePoinLogin[$kunci])) {
+            $this->cachePoinLogin[$kunci] = app(\App\Services\DailyLoginReward::class)->pointsPerUser($start, $end);
+        }
+
+        return $this->cachePoinLogin[$kunci];
     }
 
     /**
@@ -655,12 +677,15 @@ class MonitoringController extends Controller
         // ⚡ PERF: poin semua anggota dihitung SEKALI saja.
         // Sebelumnya: 1 query per anggota × per bulan (13 × 6 = 78 query) per permintaan halaman.
         $petaPoin = $this->monthlyPointsMap($months[0]['start'], now()->endOfMonth());
+        // FITUR BARU: poin bonus login per bulan
+        $petaLoginBulan = app(\App\Services\DailyLoginReward::class)
+            ->pointsPerUserPerMonth($months[0]['start'], now()->endOfMonth());
 
         foreach ($users as $user) {
             $userPoints = [];
 
             foreach ($months as $m) {
-                $userPoints[] = round($petaPoin[$user->id][$m['start']->format('Y-m')] ?? 0);
+                $userPoints[] = round(($petaPoin[$user->id][$m['start']->format('Y-m')] ?? 0) + ($petaLoginBulan[$user->id][$m['start']->format('Y-m')] ?? 0));
             }
 
             if (array_sum($userPoints) === 0) continue;
@@ -776,7 +801,7 @@ class MonitoringController extends Controller
                 'completed_tasks' => $completedTasks,
                 'total_tasks'     => $totalTasks,
                 'active_ratio'    => $activeRatio,
-                'points'          => (int) round($points),
+                'points' => (int) round($points) + (int) ($this->poinLogin($start, $end)[$user->id] ?? 0),
                 'planned_load'    => (int) round($plannedLoad),
                 'beban_items'     => $bebanItems,
                 'status'          => $status,
@@ -1093,7 +1118,7 @@ class MonitoringController extends Controller
                 'name'            => $divName,
                 'label'           => 'Tim ' . $divName,
                 'member_count'    => $memberCount,
-                'total_points'    => round($totalPoints),
+                'total_points'    => round($totalPoints + collect($members->pluck('id'))->sum(fn ($id) => $this->poinLogin($start, $end)[$id] ?? 0)),
                 'avg_points'      => $avgPoints,
                 'total_completed' => $totalCompleted,
                 'on_time_rate'    => $onTimeRate,

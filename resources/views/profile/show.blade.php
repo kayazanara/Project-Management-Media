@@ -137,6 +137,11 @@
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Total Hari Login</div>
                             <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $stats['login_days'] }} hari</div>
+                            {{-- ⚡ FITUR BARU: streak login (hari berturut-turut) --}}
+                            <div class="small text-muted mt-1">
+                                <i class="fas fa-fire text-warning mr-1"></i>
+                                Streak: <strong>{{ $stats['login_streak'] ?? 0 }} hari</strong> berturut-turut
+                            </div>
                         </div>
                         <div class="col-auto"><i class="fas fa-calendar-check fa-2x text-gray-300"></i></div>
                     </div>

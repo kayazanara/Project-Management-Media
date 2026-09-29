@@ -26,6 +26,20 @@
         </form>
     </div>
 
+    {{-- ⚡ FITUR BARU: kartu ringkas streak login harian --}}
+    @php $streakSaya = auth()->user()->login_streak ?? 0; @endphp
+
+    @if($streakSaya > 0)
+        <div class="alert alert-warning d-flex align-items-center justify-content-between shadow-sm py-2 mb-3">
+            <div class="small">
+                <i class="fas fa-fire mr-1"></i>
+                <strong>Streak login: {{ $streakSaya }} hari</strong> berturut-turut
+                <span class="text-muted">· bonus +2 poin tiap hari login</span>
+            </div>
+            <span class="badge badge-dark">Total login: {{ auth()->user()->total_login_days ?? 0 }} hari</span>
+        </div>
+    @endif
+
     <!-- 1. KPI CARDS -->
     <div class="row">
         <div class="col-xl-3 col-md-6 mb-4">

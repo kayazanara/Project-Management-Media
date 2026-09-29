@@ -29,10 +29,15 @@ class AuthController extends Controller
 
             Auth::user()->trackDailyLogin();
 
+            // ⚡ FITUR BARU: bonus login harian = 2 poin, HANYA 1x per hari.
+            // Kalau hari ini sudah pernah dapat -> $reward = null (overlay pun tidak muncul).
+            $reward = app(\App\Services\DailyLoginReward::class)->claim(Auth::user());
+
             return redirect()->intended('/dashboard')
                 ->with('success', 'Berhasil login!')
-                ->with('show_welcome', true)
-                ->with('welcome_user_name', Auth::user()->name);
+                ->with('show_welcome', $reward !== null)
+                ->with('welcome_user_name', Auth::user()->name)
+                ->with('login_reward', $reward);
         }
 
         return back()->withErrors([
