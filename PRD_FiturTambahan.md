@@ -663,7 +663,33 @@ Karena itu penilaiannya bukan "berapa task yang dia kerjakan sendiri", tapi 4 pi
 - **Data anomali dilewati** (mis. `completed_at` lebih awal dari `created_at` pada data demo).
 - Ambang & penalti terpusat di konstanta `KetuaMediaPerformance::TARGET`, `::PENALTI`, `::TURUN_PER_HARI` — gampang dikalibrasi.
 
-### 12.4 Sumber data (tanpa tabel baru untuk penilaian)
+### 12.4 Daftar "Menunggu Tindakan"
+Satu tabel berisi **semua** yang mandek, dengan kolom **Ditunggu oleh**:
+
+| Sebab | Ditunggu oleh |
+|---|---|
+| Task belum disusun / belum diajukan (Planning) | Ketua Media |
+| Menunggu ACC Ketua Media (tahap Review) | Ketua Media |
+| Revisi belum tuntas (dikelompokkan per project) | Ketua Media |
+| Sudah di-ACC, menunggu upload konten divisi | Ketua Media |
+| Diunggah, belum ditandai selesai | Ketua Media |
+| **Lewat deadline (overdue)** — baris khusus kalau belum ada sebab lain | Ketua Media |
+| **Menunggu ACC Pembina** (tahap Review) | Pembina |
+| Menunggu pembobotan (scoring) / rilis Pembina | Pembina |
+
+Aturan penting:
+- 1 baris = 1 sebab pada 1 project. Revisi pada project yang sama dikelompokkan.
+- Project overdue yang **sudah** punya baris lain tidak dibuatkan baris baru — cukup diberi
+  **tanda "lewat N hari"** di barisnya (anti dobel).
+- **Keadilan penilaian:** kartu pilar "Kecepatan Alur" hanya menghitung baris yang
+  ditunggu **Ketua Media**. Baris yang menunggu Pembina tetap tampil (biar tidak ada kerjaan
+  mandek) tapi **tidak** menurunkan skor Ketua Media.
+- Skor sub-metrik "Menunggu tindakan" berbasis **rasio** (jumlah item ÷ project aktif),
+  supaya tetap masuk akal saat jumlah project bertambah.
+- Waktu mulai menunggu dipulihkan berurutan: penanda resmi → jejak pengajuan review →
+  perubahan terakhir project (yang terakhir ditandai **perkiraan** `≥N hari*`).
+
+### 12.5 Sumber data (tanpa tabel baru untuk penilaian)
 - Kolom baru di `projects` (aditif, NULL untuk data lama): `task_submitted_at`, `task_submitted_by`, `review_requested_at`
   — dipakai mengukur kecepatan alur secara **jujur** (bukan menebak dari `updated_at`).
 - Tabel baru `ketua_media_evaluations` = **Catatan Evaluasi Pembina** per periode,
@@ -671,12 +697,12 @@ Karena itu penilaiannya bukan "berapa task yang dia kerjakan sendiri", tapi 4 pi
 - Divisi **tidak di-hardcode**: ditarik dari user (`kepala_divisi`/`anggota`), jadi divisi baru otomatis ikut.
 - Pemetaan project → divisi memakai anggota project (`project_user`), jadi 1 project bisa masuk beberapa divisi.
 
-### 12.5 Hak akses
+### 12.6 Hak akses
 Hanya Pembina Media — dijaga **dua lapis**: middleware `divisi.access:pembina` di route +
 pemeriksaan ulang di controller (`abort(403)`). Ketua Media/Kepala Divisi/Anggota = 403.
 Menu di sidebar hanya tampil untuk Pembina.
 
-### 12.6 Uji
+### 12.7 Uji
 `tests/Feature/KinerjaKetuaMediaTest.php` — 27 tes (hak akses, 4 pilar, penurunan skor karena
 task telat/project lewat deadline, pembagian bobot, tren kosong, penanda waktu workflow,
 bottleneck, catatan evaluasi + regresi tanggal `Y-m-d`).

@@ -10,6 +10,7 @@
     $skorTotal    = $hasil['skor'] ?? null;
     $warnaSkor    = $hasil['warna'] ?? 'secondary';
     $totalBottleneck = count($bottleneck);
+    $jumlahMenunggu  = $hasil['jumlah_menunggu'] ?? ['total' => 0, 'ketua_media' => 0, 'pembina' => 0];
 
     $warnaLampu = [
         'hijau' => '#1cc88a',
@@ -276,20 +277,29 @@
     <!-- ============================ BOTTLENECK ============================ -->
     <div class="col-lg-7 mb-3">
         <div class="card shadow-sm h-100" style="border-radius:12px">
-            <div class="card-header py-3 d-flex align-items-center justify-content-between bg-white">
+            <div class="card-header py-3 d-flex align-items-center justify-content-between bg-white flex-wrap">
                 <h6 class="m-0 font-weight-bold text-primary">
-                    <i class="fas fa-hourglass-half mr-1"></i> Menunggu Tindakan Ketua Media
+                    <i class="fas fa-hourglass-half mr-1"></i> Menunggu Tindakan
                 </h6>
-                <span class="badge badge-{{ $totalBottleneck > 0 ? 'danger' : 'success' }}">
-                    {{ $totalBottleneck }} item
-                </span>
+                <div>
+                    <span class="badge badge-{{ $jumlahMenunggu['ketua_media'] > 0 ? 'danger' : 'success' }} mr-1"
+                          title="Harus digerakkan Ketua Media — ini yang masuk penilaian kinerjanya">
+                        {{ $jumlahMenunggu['ketua_media'] }} untuk Ketua Media
+                    </span>
+                    @if($jumlahMenunggu['pembina'] > 0)
+                        <span class="badge badge-info"
+                              title="Menunggu tindakan Pembina (kamu) — TIDAK dihitung sebagai kesalahan Ketua Media">
+                            {{ $jumlahMenunggu['pembina'] }} untuk Pembina
+                        </span>
+                    @endif
+                </div>
             </div>
             <div class="card-body p-0">
                 @if($totalBottleneck === 0)
                     <div class="text-center py-4">
                         <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
                         <div class="text-muted" style="font-size:.88rem">
-                            Tidak ada yang menunggu tindakannya. Semua project berjalan.
+                            Tidak ada yang menunggu tindakan. Semua project berjalan.
                         </div>
                     </div>
                 @else
@@ -299,6 +309,7 @@
                                 <tr>
                                     <th class="pl-3">Project</th>
                                     <th>Yang menunggu</th>
+                                    <th class="text-center">Ditunggu oleh</th>
                                     <th class="text-center">Lama</th>
                                     <th class="pr-3 text-right">Tindakan</th>
                                 </tr>
@@ -308,20 +319,32 @@
                                     <tr>
                                         <td class="pl-3">
                                             <a href="{{ route('projects.show', $b['project_id']) }}" class="font-weight-bold">
-                                                {{ \Illuminate\Support\Str::limit($b['project'], 32) }}
+                                                {{ \Illuminate\Support\Str::limit($b['project'], 30) }}
                                             </a>
-                                            <div>
+                                            <div class="mt-1">
                                                 <span class="badge badge-{{ $b['urgensi'] === 'tinggi' ? 'danger' : 'warning' }}">
                                                     {{ $b['urgensi'] === 'tinggi' ? 'Mendesak' : 'Perlu dicek' }}
                                                 </span>
+                                                @if(!empty($b['overdue']))
+                                                    <span class="badge badge-danger" title="Project sudah lewat deadline">
+                                                        <i class="fas fa-clock"></i> lewat {{ $b['overdue'] }} hari
+                                                    </span>
+                                                @endif
                                             </div>
                                         </td>
                                         <td class="text-muted">{{ $b['label'] }}</td>
                                         <td class="text-center">
+                                            @if(($b['penanggung'] ?? 'ketua_media') === 'pembina')
+                                                <span class="badge badge-info">Pembina</span>
+                                            @else
+                                                <span class="badge badge-primary">Ketua Media</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-center">
                                             @if($b['hari'] === null)
                                                 <span class="text-muted">—</span>
                                             @elseif($b['perkiraan'] ?? false)
-                                                <span title="Perkiraan dari perubahan terakhir project — waktu masuk Review belum tercatat (data lama)">
+                                                <span title="Perkiraan dari perubahan terakhir project — waktu masuk tahap ini belum tercatat (data lama)">
                                                     ≥{{ $b['hari'] }} hari<sup>*</sup>
                                                 </span>
                                             @else
@@ -337,9 +360,9 @@
 
                     @if(collect($bottleneck)->where('perkiraan', true)->count() > 0)
                         <div class="px-3 py-2 text-muted" style="font-size:.72rem;border-top:1px solid rgba(0,0,0,.05)">
-                            <sup>*</sup>Perkiraan — waktu masuk tahap Review-nya belum tercatat, jadi diambil dari
+                            <sup>*</sup>Perkiraan — waktu masuknya tahap itu belum tercatat, jadi diambil dari
                             perubahan terakhir project (data sebelum fitur ini aktif). Angka pasti mulai terkumpul
-                            untuk project yang masuk Review setelah pembaruan ini.
+                            untuk project yang masuk tahap tersebut setelah pembaruan ini.
                         </div>
                     @endif
                 @endif

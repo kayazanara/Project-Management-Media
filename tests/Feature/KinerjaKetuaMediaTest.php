@@ -402,7 +402,10 @@ class KinerjaKetuaMediaTest extends TestCase
         ]);
 
         $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
-        $ketemu = collect($hasil['bottleneck'])->firstWhere('project_id', $project->id);
+        $ketemu = collect($hasil['bottleneck'])
+            ->where('project_id', $project->id)
+            ->where('jenis', 'acc')
+            ->first();
 
         $this->assertNotNull($ketemu, 'Project yang menunggu ACC harus muncul di bottleneck');
         $this->assertSame('acc', $ketemu['jenis']);
@@ -413,10 +416,14 @@ class KinerjaKetuaMediaTest extends TestCase
 
         $sesudah = $this->evaluasiSekarang($this->layanan()->dataset());
 
-        $this->assertNull(
-            collect($sesudah['bottleneck'])->firstWhere('project_id', $project->id),
-            'Setelah di-ACC, project tidak boleh lagi muncul sebagai bottleneck'
-        );
+        // Baris "menunggu ACC" (Pembina & Ketua Media) harus hilang.
+        // (Setelah dua pihak ACC, project pindah ke tahap Upload — kalau tahap itu sendiri
+        //  juga mandek, dia wajar muncul lagi dengan sebab BERBEDA, yaitu 'selesaikan'.)
+        $masihNungguAcc = collect($sesudah['bottleneck'])
+            ->where('project_id', $project->id)
+            ->whereIn('jenis', ['acc', 'acc_pembina']);
+
+        $this->assertCount(0, $masihNungguAcc, 'Sudah di-ACC dua pihak — tidak boleh menunggu ACC lagi');
         $this->assertNotNull($project->fresh()->approved_by_ketua_at);
     }
 
@@ -633,7 +640,7 @@ class KinerjaKetuaMediaTest extends TestCase
     //  berisi banyak item — karena dihitung dua tempat dengan syarat berbeda)
     // ==========================================================
 
-    public function test_angka_menunggu_tindakan_sama_dengan_jumlah_baris_daftar(): void
+    public function test_angka_menunggu_tindakan_sama_dengan_baris_daftar_milik_ketua_media(): void
     {
         $kepala = $this->kepalaDivisi('Lapangan');
 
@@ -645,13 +652,102 @@ class KinerjaKetuaMediaTest extends TestCase
         $daftar = $hasil['bottleneck'];
         $sub    = $hasil['pilar']['kecepatan_alur']['detail']['sub']['menunggu_tindakan'] ?? null;
 
-        $this->assertCount(1, $daftar, 'Project yang menunggu ACC harus ada di daftar');
+        $this->assertNotEmpty($daftar, 'Project yang menunggu ACC harus ada di daftar');
+
+        $milikKetua = collect($daftar)->where('penanggung', 'ketua_media')->count();
+
         $this->assertNotNull($sub, 'Sub-metrik "menunggu tindakan" harus ada');
         $this->assertSame(
-            count($daftar),
+            $milikKetua,
             (int) $sub['nilai'],
-            'Angka di kartu pilar HARUS sama dengan jumlah baris daftar bottleneck'
+            'Angka di kartu pilar HARUS sama dengan jumlah baris daftar yang ditunggu Ketua Media'
         );
+
+        // Baris yang menunggu Pembina tidak boleh ikut dihitung sebagai kesalahan Ketua Media
+        $this->assertSame(count($daftar), $hasil['jumlah_menunggu']['total']);
+        $this->assertSame(
+            count($daftar),
+            $hasil['jumlah_menunggu']['ketua_media'] + $hasil['jumlah_menunggu']['pembina'],
+            'Rincian jumlah (Ketua Media + Pembina) harus sama dengan total baris'
+        );
+    }
+
+    public function test_project_yang_menunggu_acc_pembina_masuk_daftar(): void
+    {
+        $kepala = $this->kepalaDivisi('Editing');
+
+        // Project di tahap Review, belum di-ACC siapa pun
+        $this->buatProject(Project::STATUS_REVIEW, [$kepala->id]);
+
+        $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
+
+        $accPembina = collect($hasil['bottleneck'])->where('jenis', 'acc_pembina');
+
+        $this->assertCount(1, $accPembina, 'Project yang menunggu ACC Pembina WAJIB masuk daftar');
+        $this->assertSame('pembina', $accPembina->first()['penanggung']);
+        $this->assertSame(1, $hasil['jumlah_menunggu']['pembina']);
+    }
+
+    public function test_project_overdue_masuk_daftar_tindakan(): void
+    {
+        $anggota = $this->anggotaDivisi('Lapangan');
+
+        // Project On Progress, deadline 4 hari lalu, belum selesai
+        $this->buatProject(
+            Project::STATUS_ON_PROGRESS,
+            [$anggota->id],
+            Carbon::today()->subDays(4)->toDateString()
+        );
+
+        $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
+        $item  = collect($hasil['bottleneck'])->firstWhere('jenis', 'overdue');
+
+        $this->assertNotNull($item, 'Project yang lewat deadline harus muncul di daftar tindakan');
+        $this->assertSame(4, $item['hari']);
+        $this->assertSame(4, $item['overdue']);
+        $this->assertSame('ketua_media', $item['penanggung']);
+    }
+
+    public function test_project_overdue_yang_sudah_punya_sebab_lain_tidak_dibuat_dobel(): void
+    {
+        $kepala = $this->kepalaDivisi('Broadcast');
+
+        // Menunggu ACC Ketua Media SEKALIGUS sudah lewat deadline
+        $this->buatProject(
+            Project::STATUS_REVIEW,
+            [$kepala->id],
+            Carbon::today()->subDays(3)->toDateString()
+        );
+
+        $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
+
+        $this->assertCount(0, collect($hasil['bottleneck'])->where('jenis', 'overdue'), 'Tidak boleh ada baris overdue terpisah');
+
+        // Tapi status overdue-nya tetap menempel di baris yang ada
+        $acc = collect($hasil['bottleneck'])->firstWhere('jenis', 'acc');
+        $this->assertNotNull($acc);
+        $this->assertSame(3, $acc['overdue'], 'Tanda lewat deadline harus menempel di baris yang sudah ada');
+    }
+
+    public function test_antrian_pembina_tidak_menurunkan_skor_ketua_media(): void
+    {
+        $kesepakatan = $this->kepalaDivisi('AI Research');
+        $anggota     = $this->anggotaDivisi('AI Research');
+
+        // Project sudah dibobot, menunggu DIRILIS Pembina (bukan salah Ketua Media)
+        $project = $this->buatProject(Project::STATUS_SCORING, [$kesepakatan->id, $anggota->id]);
+        $this->buatTask($project, $anggota->id, 'Pending', Carbon::today()->toDateString());
+
+        $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
+
+        $rilis = collect($hasil['bottleneck'])->where('jenis', 'rilis');
+        $this->assertCount(1, $rilis, 'Antrian rilis Pembina harus muncul di daftar');
+        $this->assertSame('pembina', $rilis->first()['penanggung']);
+
+        // Kartu pilar tidak boleh menghitung antrian Pembina sebagai kesalahan Ketua Media
+        $sub = $hasil['pilar']['kecepatan_alur']['detail']['sub']['menunggu_tindakan'];
+        $this->assertSame(0, (int) $sub['nilai']);
+        $this->assertSame(100, $sub['skor']);
     }
 
     public function test_beberapa_revisi_pada_project_sama_dikelompokkan_jadi_satu_item(): void

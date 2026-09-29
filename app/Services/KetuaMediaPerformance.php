@@ -262,6 +262,11 @@ class KetuaMediaPerformance
             'pilar_dinilai' => $pilarAdaData,
             'divisi'        => $pilar['kesehatan_divisi']['detail']['divisi'] ?? [],
             'bottleneck'    => $menungguTindakan,
+            'jumlah_menunggu' => [
+                'total'       => count($menungguTindakan),
+                'ketua_media' => count(array_filter($menungguTindakan, fn ($m) => ($m['penanggung'] ?? 'ketua_media') === 'ketua_media')),
+                'pembina'     => count(array_filter($menungguTindakan, fn ($m) => ($m['penanggung'] ?? '') === 'pembina')),
+            ],
             'timeline'      => $this->timeline($data, $ketua, $start, $end),
             'ringkasan'     => $this->ringkasan($data, $start, $end),
         ];
@@ -557,18 +562,26 @@ class KetuaMediaPerformance
             ];
         }
 
-        // Kondisi "menunggu tindakan dia" saat ini. Jumlahnya diambil dari DAFTAR yang sama
+        // Kondisi "menunggu tindakan" saat ini. Jumlahnya diambil dari DAFTAR yang sama
         // yang ditampilkan di halaman (dihitung sekali di evaluate()) — bukan hitungan
         // terpisah, supaya tidak mungkin beda dengan jumlah baris tabelnya.
         if ($sertakanSekarang) {
-            $jumlahMenunggu = count($menungguTindakan);
+            // ⚡ Hanya yang PENANGGUNGNYA Ketua Media yang dinilai — baris yang menunggu
+            // tindakan Pembina (kamu) TIDAK dihitung sebagai kesalahan dia (biar adil).
+            $milikKetua    = array_filter($menungguTindakan, fn ($m) => ($m['penanggung'] ?? 'ketua_media') === 'ketua_media');
+            $jumlahMenunggu = count($milikKetua);
+            $projectAktif   = $data['projects']->filter(fn ($p) => $p->status !== Project::STATUS_COMPLETED)->count();
+
+            // Skor berbasis RASIO (bukan potongan tetap per item) supaya tetap masuk akal
+            // saat jumlah project bertambah banyak: berapa persen project aktif yang mandek.
+            $rasio = $projectAktif > 0 ? ($jumlahMenunggu / $projectAktif) * 100 : 0;
 
             $sub['menunggu_tindakan'] = [
-                'label'  => 'Menunggu tindakan dia',
+                'label'  => 'Menunggu tindakan Ketua Media (dari ' . $projectAktif . ' project aktif)',
                 'nilai'  => $jumlahMenunggu,
                 'satuan' => 'item',
                 'target' => '0 item',
-                'skor'   => $jumlahMenunggu === 0 ? 100 : max(0, 100 - ($jumlahMenunggu * 15)),
+                'skor'   => (int) round(max(0, min(100, 100 - $rasio))),
             ];
         }
 
@@ -779,32 +792,46 @@ class KetuaMediaPerformance
     // ============================================================
 
     /**
-     * Daftar hal yang MENUNGGU SENTUHAN Ketua Media. Ini bagian paling praktis buat
-     * Pembina: bukan skor, tapi daftar kerjaan yang mandek.
+     * Daftar hal yang MENUNGGU SENTUHAN — SATU-SATUNYA sumber daftar "menunggu tindakan".
      *
-     * ⚡ PENTING (perbaikan 29 Sep): method ini adalah SATU-SATUNYA sumber daftar ini.
-     * Kartu pilar "Kecepatan Alur" memakai jumlah dari daftar INI juga, supaya angka di
-     * kartu dan jumlah baris di daftar **mustahil berbeda** — sebelumnya keduanya
-     * dihitung terpisah dengan syarat yang tidak sama, sehingga kartu menulis "0 project"
-     * padahal daftarnya berisi beberapa item.
+     * ⚡ REVISI 29 Sep (keluhan Zev): versi pertama HANYA menangkap hal yang menunggu
+     * Ketua Media, sehingga yang TIDAK masuk justru yang paling penting buat Pembina:
+     *   - project di tahap Review yang menunggu ACC PEMBINA (kamu sendiri)
+     *   - project yang sudah LEWAT DEADLINE (overdue)
+     * Keduanya sekarang masuk.
+     *
+     * Setiap baris punya `penanggung`:
+     *   - 'ketua_media' → harus digerakkan Ketua Media (masuk penilaian kinerjanya)
+     *   - 'pembina'     → menunggu tindakan PEMBINA. Ini SENGAJA TIDAK dihitung sebagai
+     *                     kesalahan Ketua Media (biar skornya adil), tapi tetap ditampilkan
+     *                     supaya tidak ada kerjaan yang diam-diam mandek.
      *
      * Aturan baris:
-     * - 1 baris = 1 sebab pada 1 project (project bisa muncul lebih dari sekali kalau
-     *   sebabnya beda, mis. menunggu ACC DAN ada revisi yang belum tuntas).
-     * - Revisi pada project yang SAMA dikelompokkan jadi 1 baris (tidak diulang-ulang).
+     * - 1 baris = 1 sebab pada 1 project (project bisa muncul >1 kali kalau sebabnya beda).
+     * - Revisi pada project yang SAMA dikelompokkan jadi 1 baris.
+     * - Project yang overdue TAPI sudah punya sebab lain tidak dibuatkan baris baru
+     *   (biar tidak dobel) — cukup diberi tanda `overdue` + jumlah hari di baris itu.
+     * - Project overdue yang TIDAK punya sebab lain tetap dibuatkan barisnya.
      */
     public function menungguTindakan(array $data): array
     {
-        $daftar = [];
+        $daftar     = [];
+        $punyaBaris = [];   // project_id => sudah punya baris? (untuk mencegah baris overdue dobel)
 
         foreach ($data['projects'] as $p) {
-            $taskCount = count($data['task_per_project'][$p->id] ?? []);
+            if ($p->status === Project::STATUS_COMPLETED) {
+                continue;
+            }
 
-            // ── 1. Planning: task belum disusun / belum diajukan ──
+            $taskCount   = count($data['task_per_project'][$p->id] ?? []);
+            $hariOverdue = $this->hariLewatDeadline($p);
+
+            // ── 1. Planning: task belum disusun / belum diajukan (KETUA MEDIA) ──
             if ($p->status === Project::STATUS_PLANNING) {
                 $hari = (int) $p->created_at->diffInDays(now());
                 $daftar[] = [
                     'jenis'      => 'planning',
+                    'penanggung' => 'ketua_media',
                     'label'      => $taskCount === 0 ? 'Task belum disusun' : 'Task siap, belum diajukan ke Pembina',
                     'project'    => $p->name,
                     'project_id' => $p->id,
@@ -812,16 +839,19 @@ class KetuaMediaPerformance
                     'perkiraan'  => false,
                     'urgensi'    => $hari >= 2 ? 'tinggi' : 'sedang',
                     'aksi'       => $taskCount === 0 ? 'Susun task' : 'Ajukan ke Pembina',
+                    'overdue'    => $hariOverdue,
                 ];
+                $punyaBaris[$p->id] = true;
             }
 
-            // ── 2. Review: belum dia ACC (menunggu tindakan langsung Ketua Media) ──
+            // ── 2. Menunggu ACC Ketua Media (KETUA MEDIA) ──
             if ($p->status === Project::STATUS_REVIEW && ! $p->approved_by_ketua_at) {
                 $waktu = $this->waktuMasukReview($p, $data);
                 $hari  = $waktu['waktu'] ? (int) $waktu['waktu']->diffInDays(now()) : null;
 
                 $daftar[] = [
                     'jenis'      => 'acc',
+                    'penanggung' => 'ketua_media',
                     'label'      => 'Menunggu ACC Ketua Media',
                     'project'    => $p->name,
                     'project_id' => $p->id,
@@ -829,11 +859,103 @@ class KetuaMediaPerformance
                     'perkiraan'  => $waktu['perkiraan'],
                     'urgensi'    => ($hari === null || $hari >= 2) ? 'tinggi' : 'sedang',
                     'aksi'       => 'Beri ACC / minta revisi',
+                    'overdue'    => $hariOverdue,
                 ];
+                $punyaBaris[$p->id] = true;
             }
+
+            // ── 3. Menunggu ACC PEMBINA (ditunggu: PEMBINA) ──
+            if ($p->status === Project::STATUS_REVIEW && ! $p->approved_by_pembina_at) {
+                $waktu = $this->waktuMasukReview($p, $data);
+                $hari  = $waktu['waktu'] ? (int) $waktu['waktu']->diffInDays(now()) : null;
+
+                $daftar[] = [
+                    'jenis'      => 'acc_pembina',
+                    'penanggung' => 'pembina',
+                    'label'      => 'Menunggu ACC Pembina',
+                    'project'    => $p->name,
+                    'project_id' => $p->id,
+                    'hari'       => $hari,
+                    'perkiraan'  => $waktu['perkiraan'],
+                    'urgensi'    => ($hari === null || $hari >= 2) ? 'tinggi' : 'sedang',
+                    'aksi'       => 'Beri ACC / minta revisi (kamu)',
+                    'overdue'    => $hariOverdue,
+                ];
+                $punyaBaris[$p->id] = true;
+            }
+
+            // ── 4. Menunggu aksi PEMBINA di alur pembobotan ──
+            if ($p->status === Project::STATUS_TASK_REVIEW) {
+                $daftar[] = [
+                    'jenis'      => 'scoring',
+                    'penanggung' => 'pembina',
+                    'label'      => 'Menunggu pembobotan (scoring) Pembina',
+                    'project'    => $p->name,
+                    'project_id' => $p->id,
+                    'hari'       => (int) $p->created_at->diffInDays(now()),
+                    'perkiraan'  => false,
+                    'urgensi'    => 'tinggi',
+                    'aksi'       => 'Beri bobot tiap task (kamu)',
+                    'overdue'    => $hariOverdue,
+                ];
+                $punyaBaris[$p->id] = true;
+            }
+
+            if ($p->status === Project::STATUS_SCORING) {
+                $daftar[] = [
+                    'jenis'      => 'rilis',
+                    'penanggung' => 'pembina',
+                    'label'      => 'Sudah dibobot, menunggu dirilis Pembina',
+                    'project'    => $p->name,
+                    'project_id' => $p->id,
+                    'hari'       => (int) $p->created_at->diffInDays(now()),
+                    'perkiraan'  => false,
+                    'urgensi'    => 'tinggi',
+                    'aksi'       => 'Rilis project (kamu)',
+                    'overdue'    => $hariOverdue,
+                ];
+                $punyaBaris[$p->id] = true;
+            }
+
+            // ── 5. Mandek menuju selesai (KETUA MEDIA yang harus mendorong) ──
+            if ($p->status === Project::STATUS_APPROVED) {
+                $daftar[] = [
+                    'jenis'      => 'upload',
+                    'penanggung' => 'ketua_media',
+                    'label'      => 'Sudah di-ACC, menunggu upload konten divisi',
+                    'project'    => $p->name,
+                    'project_id' => $p->id,
+                    'hari'       => (int) $p->updated_at->diffInDays(now()),
+                    'perkiraan'  => true,
+                    'urgensi'    => 'sedang',
+                    'aksi'       => 'Dorong divisi upload',
+                    'overdue'    => $hariOverdue,
+                ];
+                $punyaBaris[$p->id] = true;
+            }
+
+            if ($p->status === Project::STATUS_UPLOAD) {
+                $daftar[] = [
+                    'jenis'      => 'selesaikan',
+                    'penanggung' => 'ketua_media',
+                    'label'      => 'Diunggah, belum ditandai selesai',
+                    'project'    => $p->name,
+                    'project_id' => $p->id,
+                    'hari'       => (int) $p->updated_at->diffInDays(now()),
+                    'perkiraan'  => true,
+                    'urgensi'    => 'sedang',
+                    'aksi'       => 'Tandai selesai',
+                    'overdue'    => $hariOverdue,
+                ];
+                $punyaBaris[$p->id] = true;
+            }
+
+            // ── 6. LEWAT DEADLINE (overdue) ditambahkan SETELAH revisi diproses ──
+            // (lihat loop terakhir di bawah) supaya project yang sudah punya baris
+            // lain — termasuk baris revisi — tidak dibuatkan baris overdue terpisah.
         }
 
-        // ── 3. Revisi yang masih menganggur (DIKELOMPOKKAN per project) ──
+        // ── 7. Revisi yang masih menganggur (DIKELOMPOKKAN per project) ──
         $perProject = [];
 
         foreach ($data['revisions'] as $r) {
@@ -852,6 +974,8 @@ class KetuaMediaPerformance
 
             $perProject[$pid]['jumlah']++;
 
+            $punyaBaris[$pid] = true;
+
             if ($r->created_at->lessThan($perProject[$pid]['tertua'])) {
                 $perProject[$pid]['tertua'] = $r->created_at;
             }
@@ -863,6 +987,7 @@ class KetuaMediaPerformance
 
             $daftar[] = [
                 'jenis'      => 'revisi',
+                'penanggung' => 'ketua_media',
                 'label'      => $info['jumlah'] . ' revisi belum tuntas',
                 'project'    => $project->name,
                 'project_id' => $pid,
@@ -871,6 +996,35 @@ class KetuaMediaPerformance
                 'jumlah'     => $info['jumlah'],
                 'urgensi'    => $hari >= 3 ? 'tinggi' : 'sedang',
                 'aksi'       => 'Dorong divisi menyelesaikan',
+                'overdue'    => $this->hariLewatDeadline($project),
+            ];
+        }
+
+        // ── 8. LEWAT DEADLINE (overdue) — baris khusus untuk project yang belum punya
+        // baris apa pun. Project yang sudah punya baris cukup diberi TANDA overdue
+        // (field 'overdue' di barisnya), jadi tidak ada baris dobel untuk project sama. ──
+        foreach ($data['projects'] as $p) {
+            if ($p->status === Project::STATUS_COMPLETED || isset($punyaBaris[$p->id])) {
+                continue;
+            }
+
+            $hariOverdue = $this->hariLewatDeadline($p);
+
+            if ($hariOverdue === null) {
+                continue;
+            }
+
+            $daftar[] = [
+                'jenis'      => 'overdue',
+                'penanggung' => 'ketua_media',
+                'label'      => 'Lewat deadline ' . $hariOverdue . ' hari',
+                'project'    => $p->name,
+                'project_id' => $p->id,
+                'hari'       => $hariOverdue,
+                'perkiraan'  => false,
+                'urgensi'    => $hariOverdue >= 3 ? 'tinggi' : 'sedang',
+                'aksi'       => 'Kejar divisi & perbarui deadline',
+                'overdue'    => $hariOverdue,
             ];
         }
 
@@ -883,6 +1037,23 @@ class KetuaMediaPerformance
         });
 
         return $daftar;
+    }
+
+    /**
+     * Berapa hari sebuah project sudah LEWAT DEADLINE? null kalau tidak lewat.
+     * Project yang sudah Completed tidak dihitung lewat.
+     */
+    private function hariLewatDeadline(Project $p): ?int
+    {
+        if ($p->status === Project::STATUS_COMPLETED || ! $p->deadline) {
+            return null;
+        }
+
+        if ($p->deadline->copy()->endOfDay()->isPast()) {
+            return (int) $p->deadline->diffInDays(now());
+        }
+
+        return null;
     }
 
     /**
@@ -1134,6 +1305,7 @@ class KetuaMediaPerformance
             'pilar_dinilai' => [],
             'divisi'        => [],
             'bottleneck'    => [],
+            'jumlah_menunggu' => ['total' => 0, 'ketua_media' => 0, 'pembina' => 0],
             'timeline'      => [],
             'ringkasan'     => [
                 'divisi'               => count($data['divisions'] ?? []),
