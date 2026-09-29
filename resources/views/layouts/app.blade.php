@@ -343,6 +343,12 @@
                    ⚡ ANIMASI BONUS LOGIN: reel bergulir ke bawah -> melambat ->
                    angka MELEDAK (pop + glow + cincin + confetti) -> poin muncul
                    ============================================================ */
+                /* ⚡ PENTING: overlay bawaan punya animasi CSS "memudar otomatis" mulai 2,4 detik
+                   (welcomeOverlayOut). Itu membuat animasi bonus TIDAK KELIHATAN SAMA SEKALI
+                   karena angka melambat, ledakan, dan poin terjadi SETELAH overlay memudar.
+                   Saat ada bonus login, pemudar otomatis itu dimatikan. */
+                #welcomeOverlay { animation: none !important; opacity: 1 !important; }
+
                 .streak-box { margin-top: 18px; }
                 .streak-label { font-size: .8rem; letter-spacing: 3px; text-transform: uppercase; opacity: .75; }
 
@@ -355,13 +361,14 @@
 
                 /* satu langkah putaran: angka baru masuk dari ATAS lalu turun ke posisinya */
                 @keyframes rollDown {
-                    0%   { transform: translateY(-118%); opacity: 0; filter: blur(3px); }
-                    55%  { opacity: 1; filter: blur(0); }
+                    0%   { transform: translateY(-110%); opacity: .4; }
+                    45%  { opacity: 1; }
                     100% { transform: translateY(0); opacity: 1; }
                 }
-                .roll-in { display: inline-block; animation: rollDown .17s ease-out; }
-                /* fase melambat: langkah lebih halus & lebih lama */
-                .roll-slow { animation-duration: .34s; }
+                /* ⚡ durasi animasi dibuat LEBIH PENDEK daripada jarak antar-putaran supaya tiap
+                   angka sempat "mendarat" dengan tajam (sebelumnya lebih lama -> angka terlihat pudar) */
+                .roll-in { display: inline-block; animation: rollDown .1s ease-out; }
+                .roll-slow { animation-duration: .2s; }
 
                 /* ⚡ LEDAKAN angka final */
                 @keyframes explode {
@@ -419,13 +426,8 @@
                               background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .45);
                               font-size: 2.1rem; font-weight: 800; box-shadow: 0 0 26px rgba(255, 214, 102, .6); }
 
-                /* hormati preferensi sistem "kurangi gerakan" */
-                @media (prefers-reduced-motion: reduce) {
-                    .roll-in, .roll-slow, .explode, .burst-ring.boom, .confetti.go,
-                    .reward-poin.show, .streak-box.kabar { animation: none !important; opacity: 1 !important;
-                                                           transform: none !important; }
-                    #rewardPoin { opacity: 1 !important; }
-                }
+                /* ⚡ CATATAN: blok @media "kurangi gerakan" DIHAPUS - dulu itu mematikan
+                   seluruh animasi di laptop yang setelannya begitu, jadi fitur ini tidak kelihatan. */
             </style>
         @endif
 
@@ -494,16 +496,10 @@
 
                 if (!el || !overlay) return;
 
-                var kurangiGerak = window.matchMedia
-                    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-                // kalau pengguna minta gerakan minimal -> langsung angka akhir, tanpa ledakan
-                if (kurangiGerak) {
-                    el.textContent = target;
-                    if (poin) poin.classList.add('show');
-                    setTimeout(function () { overlay.remove(); }, 3500);
-                    return;
-                }
+                // ⚡ CATATAN: sebelumnya animasi ini DILEWATI kalau sistem pengguna menyetel
+                // "kurangi gerakan" (prefers-reduced-motion). Ternyata di laptop dengan setelan
+                // itu animasinya TIDAK KELIHATAN SAMA SEKALI (cuma angka diam) -> jadi sekarang
+                // animasi SELALU dijalankan. Ini momen yang memang mau dirayakan.
 
                 var JEDA_AWAL  = 700;    // tunggu teks selamat datang tampil dulu
                 var DURASI_ROLL = 2600;  // total babak bergulir (cepat -> melambat)
@@ -541,7 +537,7 @@
 
                     // jarak antar putaran makin lama (0,07s -> ~0,31s) => efek melambat
                     var progres = (DURASI_ROLL - sisa) / DURASI_ROLL;
-                    var jeda = 70 + Math.round(Math.pow(progres, 2) * 240);
+                    var jeda = 85 + Math.round(Math.pow(progres, 2) * 235);
                     setTimeout(putar, jeda);
                 }
 

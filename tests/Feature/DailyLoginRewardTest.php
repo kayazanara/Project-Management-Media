@@ -92,7 +92,10 @@ class DailyLoginRewardTest extends TestCase
         $res->assertSee('confetti', false);        // confetti meriah
         $res->assertSee('explode', false);         // pop angka final
         $res->assertSee('poinPop', false);         // poin muncul setelah ledakan
-        $res->assertSee('prefers-reduced-motion', false);  // hormati setelan aksesibilitas
+
+        // ⚡ PENTING: pemudar otomatis overlay bawaan harus DIMATIKAN, kalau tidak
+        // overlay hilang di 2,4 detik dan animasi bonus tidak pernah kelihatan.
+        $res->assertSee('#welcomeOverlay { animation: none !important; opacity: 1 !important; }', false);
     }
 
     // ============================================================
