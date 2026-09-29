@@ -349,6 +349,21 @@
                    Saat ada bonus login, pemudar otomatis itu dimatikan. */
                 #welcomeOverlay { animation: none !important; opacity: 1 !important; }
 
+                /* ⚡ TRANSISI KELUAR: setelah poin muncul, overlay MEMUDAR perlahan (blur +
+                   sedikit membesar), bukan hilang mendadak, supaya pindah ke dashboard halus. */
+                #welcomeOverlay { transition: opacity .85s ease, transform .85s ease, filter .85s ease; }
+                #welcomeOverlay.memudar { opacity: 0 !important; transform: scale(1.045);
+                                          filter: blur(7px); pointer-events: none; }
+                .welcome-content { transition: transform .85s ease, opacity .85s ease; }
+                #welcomeOverlay.memudar .welcome-content { transform: scale(.93) translateY(-16px); }
+
+                /* konten dashboard ikut masuk halus dari bawah saat overlay memudar */
+                body.setelah-overlay #content-wrapper { animation: kontenMasuk .9s ease-out both; }
+                @keyframes kontenMasuk {
+                    0%   { opacity: 0; transform: translateY(16px) scale(.995); }
+                    100% { opacity: 1; transform: translateY(0) scale(1); }
+                }
+
                 .streak-box { margin-top: 18px; }
                 .streak-label { font-size: .8rem; letter-spacing: 3px; text-transform: uppercase; opacity: .75; }
 
@@ -638,10 +653,20 @@
                     putar();
                 }, JEDA_AWAL);
 
-                // auto-tutup (cukup lama supaya animasinya dinikmati, tidak buru-buru)
-                setTimeout(function () {
-                    if (document.body.contains(overlay)) overlay.remove();
-                }, 8000);
+                // ⚡ Auto-tutup dengan TRANSISI MEMUDAR (bukan hilang mendadak).
+                function tutupOverlay() {
+                    if (!overlay || !document.body.contains(overlay)) return;
+
+                    overlay.classList.add('memudar');                 // overlay mulai memudar + blur
+                    document.body.classList.add('setelah-overlay');   // dashboard masuk halus
+
+                    setTimeout(function () {
+                        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    }, 1200);
+                }
+
+                // beri waktu ±2,5 detik untuk menikmati poinnya, baru memudar
+                setTimeout(tutupOverlay, 7000);
             })();            @endif
         </script>
     @endif

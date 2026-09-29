@@ -96,6 +96,12 @@ class DailyLoginRewardTest extends TestCase
         // ⚡ PENTING: pemudar otomatis overlay bawaan harus DIMATIKAN, kalau tidak
         // overlay hilang di 2,4 detik dan animasi bonus tidak pernah kelihatan.
         $res->assertSee('#welcomeOverlay { animation: none !important; opacity: 1 !important; }', false);
+
+        // ⚡ TRANSISI KELUAR: setelah poin muncul, overlay MEMUDAR (bukan hilang mendadak)
+        // dan konten dashboard masuk halus.
+        $res->assertSee('memudar', false);         // class pemudar overlay
+        $res->assertSee('kontenMasuk', false);     // animasi konten dashboard
+        $res->assertSee('tutupOverlay', false);    // fungsi penutup dengan transisi
     }
 
     // ============================================================
