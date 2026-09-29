@@ -85,6 +85,14 @@ class DailyLoginRewardTest extends TestCase
         $res->assertSee('Streak Login', false);
         $res->assertSee('streakCounter', false);   // angka yang bergulir
         $res->assertSee('+2', false);              // poin hari ini
+
+        // ⚡ animasi 4 babak: bergulir ke bawah -> melambat -> MELEDAK -> poin muncul
+        $res->assertSee('rollDown', false);        // angka masuk dari atas (efek scroll ke bawah)
+        $res->assertSee('burst-ring', false);      // cincin ledakan
+        $res->assertSee('confetti', false);        // confetti meriah
+        $res->assertSee('explode', false);         // pop angka final
+        $res->assertSee('poinPop', false);         // poin muncul setelah ledakan
+        $res->assertSee('prefers-reduced-motion', false);  // hormati setelan aksesibilitas
     }
 
     // ============================================================

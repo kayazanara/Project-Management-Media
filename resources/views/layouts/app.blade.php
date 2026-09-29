@@ -313,12 +313,18 @@
                 <div class="welcome-line"></div>
 
                 @if($reward)
-                    {{-- ⚡ FITUR BARU: bonus login harian — angka streak bergulir lalu muncul poinnya --}}
+                    {{-- ⚡ BONUS LOGIN: reel angka bergulir -> melambat -> MELEDAK -> poin --}}
                     <div class="welcome-sub">Kamu dapat bonus login harian 🎁</div>
 
-                    <div class="streak-box">
+                    <div class="streak-box" id="streakBox">
                         <div class="streak-label">🔥 Streak Login</div>
-                        <div class="streak-number"><span id="streakCounter">0</span><small> hari</small></div>
+
+                        <div class="reel-window">
+                            <div class="streak-number">
+                                <span id="streakCounter" class="roll-in">0</span><small> hari</small>
+                            </div>
+                            <span class="burst-ring"></span>
+                        </div>
                     </div>
 
                     <div id="rewardPoin" class="reward-poin">
@@ -333,18 +339,93 @@
 
         @if($reward)
             <style>
-                .streak-box { margin-top: 16px; }
+                /* ============================================================
+                   ⚡ ANIMASI BONUS LOGIN: reel bergulir ke bawah -> melambat ->
+                   angka MELEDAK (pop + glow + cincin + confetti) -> poin muncul
+                   ============================================================ */
+                .streak-box { margin-top: 18px; }
                 .streak-label { font-size: .8rem; letter-spacing: 3px; text-transform: uppercase; opacity: .75; }
-                .streak-number { font-size: 4.6rem; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums;
+
+                .reel-window { position: relative; display: inline-block; padding: 0 20px 4px; }
+
+                .streak-number { font-size: 5rem; font-weight: 800; line-height: 1.06;
+                                 font-variant-numeric: tabular-nums; position: relative; z-index: 3;
                                  text-shadow: 0 0 26px rgba(255, 255, 255, .35); }
                 .streak-number small { font-size: 1.1rem; font-weight: 600; opacity: .8; }
-                .reward-poin { margin-top: 12px; opacity: 0; transform: translateY(14px) scale(.85);
-                               transition: all .45s cubic-bezier(.2, .9, .3, 1.5); }
-                .reward-poin.show { opacity: 1; transform: translateY(0) scale(1); }
+
+                /* satu langkah putaran: angka baru masuk dari ATAS lalu turun ke posisinya */
+                @keyframes rollDown {
+                    0%   { transform: translateY(-118%); opacity: 0; filter: blur(3px); }
+                    55%  { opacity: 1; filter: blur(0); }
+                    100% { transform: translateY(0); opacity: 1; }
+                }
+                .roll-in { display: inline-block; animation: rollDown .17s ease-out; }
+                /* fase melambat: langkah lebih halus & lebih lama */
+                .roll-slow { animation-duration: .34s; }
+
+                /* ⚡ LEDAKAN angka final */
+                @keyframes explode {
+                    0%   { transform: scale(1) rotate(0deg); }
+                    18%  { transform: scale(1.55) rotate(-4deg); }
+                    34%  { transform: scale(.9) rotate(3deg); }
+                    56%  { transform: scale(1.24) rotate(-2deg); }
+                    76%  { transform: scale(1.05) rotate(1deg); }
+                    100% { transform: scale(1) rotate(0deg); }
+                }
+                @keyframes glowPulse {
+                    0%   { text-shadow: 0 0 26px rgba(255, 255, 255, .35); }
+                    28%  { text-shadow: 0 0 62px rgba(255, 255, 255, 1), 0 0 96px rgba(255, 214, 102, .95); }
+                    100% { text-shadow: 0 0 30px rgba(255, 255, 255, .45); }
+                }
+                .explode { display: inline-block; animation: explode .95s cubic-bezier(.2, .8, .3, 1.2), glowPulse 1.1s ease-out; }
+
+                .streak-box.kabar { animation: kabarGetar .42s ease-in-out; }
+                @keyframes kabarGetar {
+                    0%, 100% { transform: translate(0, 0); }
+                    25%      { transform: translate(-3px, 2px); }
+                    50%      { transform: translate(3px, -2px); }
+                    75%      { transform: translate(-2px, -1px); }
+                }
+
+                /* cincin ledakan */
+                .burst-ring { position: absolute; left: 50%; top: 48%; width: 46px; height: 46px;
+                              margin: -23px 0 0 -23px; border-radius: 50%; z-index: 1; pointer-events: none;
+                              border: 4px solid rgba(255, 214, 102, .95); opacity: 0; }
+                .burst-ring.boom { animation: ringBoom .8s ease-out; }
+                @keyframes ringBoom {
+                    0%   { opacity: .95; transform: scale(.35); border-width: 7px; }
+                    100% { opacity: 0;   transform: scale(7);   border-width: 1px; }
+                }
+
+                /* confetti (murni CSS, tanpa library) */
+                .confetti { position: absolute; left: 50%; top: 42%; width: 9px; height: 14px; border-radius: 2px;
+                            z-index: 2; pointer-events: none; opacity: 0; }
+                .confetti.go { animation: confettiFly var(--dur, 1.5s) cubic-bezier(.15, .7, .3, 1) forwards; }
+                @keyframes confettiFly {
+                    0%   { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(.55); }
+                    100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1.05); }
+                }
+
+                /* poin muncul SETELAH ledakan */
+                .reward-poin { margin-top: 14px; opacity: 0; transform: translateY(18px) scale(.65); }
+                .reward-poin.show { animation: poinPop .72s cubic-bezier(.2, .9, .3, 1.6) forwards; }
+                @keyframes poinPop {
+                    0%   { opacity: 0; transform: translateY(22px) scale(.55); }
+                    60%  { opacity: 1; transform: translateY(-5px) scale(1.1); }
+                    100% { opacity: 1; transform: translateY(0) scale(1); }
+                }
                 .poin-label { display: block; font-size: .75rem; letter-spacing: 3px; text-transform: uppercase; opacity: .75; }
-                .poin-value { display: inline-block; margin-top: 6px; padding: 4px 24px; border-radius: 999px;
-                              background: rgba(255, 255, 255, .18); border: 1px solid rgba(255, 255, 255, .4);
-                              font-size: 2rem; font-weight: 800; }
+                .poin-value { display: inline-block; margin-top: 6px; padding: 4px 26px; border-radius: 999px;
+                              background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .45);
+                              font-size: 2.1rem; font-weight: 800; box-shadow: 0 0 26px rgba(255, 214, 102, .6); }
+
+                /* hormati preferensi sistem "kurangi gerakan" */
+                @media (prefers-reduced-motion: reduce) {
+                    .roll-in, .roll-slow, .explode, .burst-ring.boom, .confetti.go,
+                    .reward-poin.show, .streak-box.kabar { animation: none !important; opacity: 1 !important;
+                                                           transform: none !important; }
+                    #rewardPoin { opacity: 1 !important; }
+                }
             </style>
         @endif
 
@@ -397,54 +478,175 @@
             setTimeout(playWelcomeSound, 200);
 
             @if($reward)
-            // ⚡ FITUR BARU: angka bergulir cepat, lalu berhenti tepat di TOTAL STREAK
+            // ============================================================
+            // ⚡ ANIMASI BONUS LOGIN — 4 babak (tempo sengaja santai, tidak terlalu cepat):
+            //   1) angka bergulir KE BAWAH dengan cepat
+            //   2) putaran makin lambat (seperti reel yang berhenti)
+            //   3) angka final MELEDAK: pop + glow + cincin + confetti + bunyi meriah
+            //   4) baru muncul "+N Poin", lalu auto-tutup
+            // ============================================================
             (function () {
-                var target = {{ (int) $reward['streak'] }};
-                var el = document.getElementById('streakCounter');
-                if (!el) return;
+                var target  = {{ (int) $reward['streak'] }};
+                var el      = document.getElementById('streakCounter');
+                var box     = document.getElementById('streakBox');
+                var poin    = document.getElementById('rewardPoin');
+                var overlay = document.getElementById('welcomeOverlay');
 
-                var mulai = Date.now();
-                var durasi = 1500;   // total durasi animasi (ms)
+                if (!el || !overlay) return;
 
-                function frame() {
-                    var t = Math.min((Date.now() - mulai) / durasi, 1);
+                var kurangiGerak = window.matchMedia
+                    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-                    if (t >= 1) {
-                        el.textContent = target;     // berhenti tepat di angka streak
+                // kalau pengguna minta gerakan minimal -> langsung angka akhir, tanpa ledakan
+                if (kurangiGerak) {
+                    el.textContent = target;
+                    if (poin) poin.classList.add('show');
+                    setTimeout(function () { overlay.remove(); }, 3500);
+                    return;
+                }
+
+                var JEDA_AWAL  = 700;    // tunggu teks selamat datang tampil dulu
+                var DURASI_ROLL = 2600;  // total babak bergulir (cepat -> melambat)
+                var batasRoll  = 0;
+                var angkaAcak  = target + 9;
+
+                // ---------- babak 1 & 2: bergulir ke bawah lalu melambat ----------
+                function putar() {
+                    var sisa = batasRoll - Date.now();
+                    var nilai;
+
+                    if (sisa > 950) {
+                        // fase cepat: angka acak
+                        nilai = Math.floor(Math.random() * angkaAcak) + 1;
+                    } else {
+                        // fase melambat: nilai makin dekat ke angka asli
+                        nilai = Math.max(1, target + Math.ceil(sisa / 240));
+                    }
+
+                    el.textContent = nilai;
+
+                    // paksa animasi "masuk dari atas" berjalan ulang tiap langkah
+                    el.classList.remove('roll-in');
+                    void el.offsetWidth;
+                    el.classList.add('roll-in');
+
+                    if (sisa < 950) {
+                        el.classList.add('roll-slow');
+                    }
+
+                    if (sisa <= 0) {
+                        ledakan();
                         return;
                     }
 
-                    if (t > 0.72) {
-                        // fase melambat: makin dekat ke angka sebenarnya
-                        el.textContent = Math.max(1, Math.round(target * (1 - Math.pow(1 - t, 2))));
-                        setTimeout(frame, 150);
-                    } else {
-                        // fase berputar cepat (efek scrolling angka)
-                        el.textContent = Math.floor(Math.random() * (target + 9)) + 1;
-                        setTimeout(frame, 45);
+                    // jarak antar putaran makin lama (0,07s -> ~0,31s) => efek melambat
+                    var progres = (DURASI_ROLL - sisa) / DURASI_ROLL;
+                    var jeda = 70 + Math.round(Math.pow(progres, 2) * 240);
+                    setTimeout(putar, jeda);
+                }
+
+                // ---------- babak 3: MELEDAK ----------
+                function ledakan() {
+                    el.textContent = target;
+                    el.classList.remove('roll-in', 'roll-slow');
+                    void el.offsetWidth;
+                    el.classList.add('explode');
+
+                    if (box) {
+                        box.classList.remove('kabar');
+                        void box.offsetWidth;
+                        box.classList.add('kabar');
+                    }
+
+                    var ring = document.querySelector('.burst-ring');
+                    if (ring) {
+                        ring.classList.remove('boom');
+                        void ring.offsetWidth;
+                        ring.classList.add('boom');
+                    }
+
+                    bikinConfetti();
+                    bunyiMeriah();
+
+                    // ---------- babak 4: poin muncul setelah ledakan ----------
+                    setTimeout(function () {
+                        if (poin) poin.classList.add('show');
+                    }, 780);
+                }
+
+                // confetti murni CSS (aman, tidak butuh library/CDN)
+                function bikinConfetti() {
+                    var wadah = document.querySelector('.reel-window');
+                    if (!wadah) return;
+
+                    var warna = ['#ffd666', '#ffffff', '#ff8fab', '#7ce7c0', '#8ab6ff', '#ffe9a8'];
+                    var jumlah = 30;
+
+                    for (var i = 0; i < jumlah; i++) {
+                        var c = document.createElement('span');
+                        c.className = 'confetti';
+                        c.style.background = warna[i % warna.length];
+
+                        var sudut = (Math.PI * 2 * i) / jumlah + (Math.random() * 0.45);
+                        var jarak = 130 + (Math.random() * 180);
+                        var x = Math.cos(sudut) * jarak;
+                        var y = Math.sin(sudut) * jarak * 0.8 + 95;   // cenderung jatuh ke bawah
+
+                        c.style.setProperty('--x', Math.round(x) + 'px');
+                        c.style.setProperty('--y', Math.round(y) + 'px');
+                        c.style.setProperty('--r', Math.round(Math.random() * 720 - 360) + 'deg');
+                        c.style.setProperty('--dur', (1.2 + Math.random() * 0.7).toFixed(2) + 's');
+
+                        wadah.appendChild(c);
+                        void c.offsetWidth;
+                        c.classList.add('go');
+
+                        (function (node) {
+                            setTimeout(function () {
+                                if (node.parentNode) node.parentNode.removeChild(node);
+                            }, 2300);
+                        })(c);
                     }
                 }
 
-                frame();
-            })();
+                // bunyi "tada" singkat saat ledakan (dibungkus try/catch: aman kalau audio diblokir)
+                function bunyiMeriah() {
+                    try {
+                        var AC = window.AudioContext || window.webkitAudioContext;
+                        if (!AC) return;
 
-            // Poin hari ini muncul setelah angka berhenti
-            setTimeout(function () {
-                var poin = document.getElementById('rewardPoin');
-                if (poin) poin.classList.add('show');
-            }, 1600);
+                        var ctx = new AC();
+                        var t = ctx.currentTime;
 
-            // Auto-tutup setelah semua tampil
-            setTimeout(function () {
-                var overlay = document.getElementById('welcomeOverlay');
-                if (overlay) overlay.remove();
-            }, 4600);
-            @else
-            setTimeout(function () {
-                var overlay = document.getElementById('welcomeOverlay');
-                if (overlay) overlay.remove();
-            }, 3100);
-            @endif
+                        [523.25, 659.25, 783.99, 1046.50].forEach(function (freq, i) {
+                            var osc = ctx.createOscillator();
+                            var gain = ctx.createGain();
+                            osc.type = 'triangle';
+                            osc.frequency.value = freq;
+                            gain.gain.setValueAtTime(0, t + i * 0.07);
+                            gain.gain.linearRampToValueAtTime(0.09, t + i * 0.07 + 0.04);
+                            gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.55);
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+                            osc.start(t + i * 0.07);
+                            osc.stop(t + i * 0.07 + 0.6);
+                        });
+                    } catch (e) {
+                        console.log('Bunyi meriah dilewati:', e);
+                    }
+                }
+
+                // mulai: tunggu sebentar supaya teks "Selamat Datang" terbaca dulu
+                setTimeout(function () {
+                    batasRoll = Date.now() + DURASI_ROLL;
+                    putar();
+                }, JEDA_AWAL);
+
+                // auto-tutup (cukup lama supaya animasinya dinikmati, tidak buru-buru)
+                setTimeout(function () {
+                    if (document.body.contains(overlay)) overlay.remove();
+                }, 8000);
+            })();            @endif
         </script>
     @endif
 
