@@ -159,6 +159,20 @@ class HalamanSmokeTest extends TestCase
         ], true);
     }
 
+    public function test_generator_laporan_berhasil_dirender(): void
+    {
+        [$pembina] = $this->siapkanData();
+
+        $res = $this->actingAs($pembina)->post('/reports/generate', [
+            'start_date'   => now()->startOfWeek()->toDateString(),
+            'end_date'     => now()->endOfWeek()->toDateString(),
+            'pj_name'      => 'PJ Uji',
+            'manager_name' => 'Manager Uji',
+        ]);
+
+        $this->assertSame(200, $res->status(), 'Generator laporan cetak gagal dirender.');
+    }
+
     public function test_halaman_anggota_dan_kepala_divisi_sehat(): void
     {
         [, $anggota, $project, , $content, $meeting] = $this->siapkanData();
