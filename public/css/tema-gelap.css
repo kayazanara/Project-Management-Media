@@ -1,0 +1,486 @@
+/* ==========================================================================
+   MODE GELAP — Project Media
+   Dipakai dengan menaruh data-theme="dark" di <html>.
+   Semua aturan hanya aktif pada [data-theme="dark"], jadi mode terang
+   (tampilan lama) sama sekali tidak berubah.
+   ========================================================================== */
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+}
+
+/* ------------------------------ latar utama ------------------------------ */
+html[data-theme="dark"] body {
+    background-color: #0f1220 !important;
+    color: #cbd5e1;
+}
+
+html[data-theme="dark"] #content {
+    background: linear-gradient(135deg, #10142a 0%, #131834 35%, #161a33 65%, #12162b 100%) !important;
+}
+
+html[data-theme="dark"] .topbar.bg-white,
+html[data-theme="dark"] .sticky-footer.bg-white {
+    background-color: #151a2e !important;
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
+    color: #cbd5e1;
+}
+
+/* ------------------------------- kartu/panel ---------------------------- */
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .modal-content,
+html[data-theme="dark"] .dropdown-menu,
+html[data-theme="dark"] .list-group-item,
+html[data-theme="dark"] .custom-select,
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .input-group-text {
+    background-color: #1a1f36 !important;
+    border-color: #2b3352 !important;
+    color: #dce3f3;
+}
+
+html[data-theme="dark"] .card-header,
+html[data-theme="dark"] .modal-header,
+html[data-theme="dark"] .modal-footer,
+html[data-theme="dark"] .card.shadow > .card-header:not([class*="bg-"]) {
+    background: #1f2542 !important;
+    background-image: none !important;
+    border-color: rgba(255, 255, 255, .08) !important;
+    color: #e6e9f5;
+}
+
+html[data-theme="dark"] .card.shadow,
+html[data-theme="dark"] .shadow,
+html[data-theme="dark"] .shadow-sm {
+    box-shadow: 0 2px 14px rgba(0, 0, 0, .5) !important;
+}
+
+html[data-theme="dark"] .card.border-left-primary,
+html[data-theme="dark"] .card.border-left-info,
+html[data-theme="dark"] .card.border-left-warning,
+html[data-theme="dark"] .card.border-left-success,
+html[data-theme="dark"] .card.border-left-danger {
+    border-left-width: 4px !important;
+}
+
+/* ------------------------------- teks ----------------------------------- */
+html[data-theme="dark"] .text-gray-800,
+html[data-theme="dark"] .text-gray-900,
+html[data-theme="dark"] .text-dark,
+html[data-theme="dark"] .font-weight-bold.text-gray-800 {
+    color: #e8ecf8 !important;
+}
+
+html[data-theme="dark"] .text-muted,
+html[data-theme="dark"] .text-gray-500,
+html[data-theme="dark"] .text-gray-600,
+html[data-theme="dark"] .text-gray-700,
+html[data-theme="dark"] small.text-muted {
+    color: #98a2bd !important;
+}
+
+html[data-theme="dark"] h1.h3.text-gray-800 {
+    background: linear-gradient(135deg, #93b4ff 0%, #b39cff 60%, #d0b3ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+html[data-theme="dark"] h1.h3.text-gray-800 i {
+    -webkit-text-fill-color: #b39cff;
+}
+
+/* ---------------------- warna teks bantu (Bootstrap !important) ---------- */
+/* Di mode gelap warna aslinya terlalu gelap untuk latar kartu gelap */
+html[data-theme="dark"] .text-primary {
+    color: #9db4ff !important;
+}
+
+html[data-theme="dark"] .text-info {
+    color: #63d6e9 !important;
+}
+
+html[data-theme="dark"] .text-success {
+    color: #52d69e !important;
+}
+
+html[data-theme="dark"] .text-warning {
+    color: #ffcf5c !important;
+}
+
+html[data-theme="dark"] .text-danger {
+    color: #ff9494 !important;
+}
+
+html[data-theme="dark"] .text-gray-300 {
+    color: #6d7899 !important;
+}
+
+/* Tautan biasa dibikin terang, TAPI jangan menimpa warna tombol/badge/link menu
+   (kalau ditimpa, tulisan tombol jadi biru muda di atas tombol abu = tidak terbaca) */
+html[data-theme="dark"] a:not(.btn):not(.badge):not(.nav-link):not(.dropdown-item):not(.page-link):not(.collapse-item):not(.sidebar-brand):not(.list-group-item) {
+    color: #9db4ff;
+}
+
+html[data-theme="dark"] a:not(.btn):not(.badge):not(.nav-link):not(.dropdown-item):not(.page-link):not(.collapse-item):not(.sidebar-brand):not(.list-group-item):hover {
+    color: #c9d6ff;
+}
+
+/* ------------------------------- tabel ---------------------------------- */
+html[data-theme="dark"] .table {
+    color: #d5dcee;
+}
+
+html[data-theme="dark"] .table thead th {
+    background-color: #20263f !important;
+    color: #c7d0e6;
+    border-color: rgba(255, 255, 255, .08) !important;
+}
+
+html[data-theme="dark"] .table td,
+html[data-theme="dark"] .table th {
+    border-color: rgba(255, 255, 255, .07) !important;
+    background-color: transparent;
+}
+
+html[data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, .02);
+}
+
+html[data-theme="dark"] .table-hover tbody tr:hover {
+    background-color: rgba(120, 140, 255, .08);
+    color: #f1f4ff;
+}
+
+html[data-theme="dark"] .bg-light,
+html[data-theme="dark"] .bg-gray-100,
+html[data-theme="dark"] .bg-gray-200,
+html[data-theme="dark"] .bg-white {
+    background-color: #20263f !important;
+    color: #d5dcee;
+}
+
+/* --------------------------- form & tombol ------------------------------ */
+html[data-theme="dark"] .form-control:focus,
+html[data-theme="dark"] .custom-select:focus {
+    background-color: #141930;
+    border-color: #6f5bcf;
+    color: #fff;
+    box-shadow: 0 0 0 .2rem rgba(139, 92, 246, .25);
+}
+
+html[data-theme="dark"] .form-control::placeholder {
+    color: #7b86a5;
+}
+
+html[data-theme="dark"] .form-control option {
+    background-color: #1a1f36;
+    color: #dce3f3;
+}
+
+html[data-theme="dark"] label,
+html[data-theme="dark"] .col-form-label {
+    color: #cbd5e1;
+}
+
+html[data-theme="dark"] .btn-outline-secondary {
+    color: #c3cadd;
+    border-color: #4a5477;
+}
+
+html[data-theme="dark"] .btn-outline-secondary:hover {
+    background-color: #2b3352;
+    color: #fff;
+}
+
+html[data-theme="dark"] .btn-outline-primary {
+    color: #a9bdff;
+    border-color: #43508a;
+}
+
+html[data-theme="dark"] .btn-outline-dark {
+    color: #cbd5e1;
+    border-color: #4a5477;
+}
+
+html[data-theme="dark"] .btn-light {
+    background-color: #232a45;
+    border-color: #2b3352;
+    color: #dce3f3;
+}
+
+html[data-theme="dark"] .close {
+    color: #fff;
+    text-shadow: none;
+    opacity: .75;
+}
+
+/* --------------------------- alert & badge ------------------------------ */
+html[data-theme="dark"] .alert-light {
+    background-color: #20263f;
+    border-color: #2b3352;
+    color: #cbd5e1;
+}
+
+html[data-theme="dark"] .alert-info {
+    background-color: #14304c;
+    border-color: #1e4f79;
+    color: #c6e2ff;
+}
+
+html[data-theme="dark"] .alert-warning {
+    background-color: #3a2e11;
+    border-color: #6d5510;
+    color: #ffe6a8;
+}
+
+html[data-theme="dark"] .alert-success {
+    background-color: #11351f;
+    border-color: #1d5e35;
+    color: #bdf0cf;
+}
+
+html[data-theme="dark"] .alert-danger {
+    background-color: #3a1616;
+    border-color: #6d2323;
+    color: #ffc9c9;
+}
+
+html[data-theme="dark"] .alert-secondary {
+    background-color: #232a45;
+    border-color: #2b3352;
+    color: #cbd5e1;
+}
+
+html[data-theme="dark"] .badge-light {
+    background-color: #232a45 !important;
+    color: #cbd5e1 !important;
+    border-color: #374063 !important;
+}
+
+html[data-theme="dark"] .badge-secondary {
+    background-color: #3b4363;
+    color: #e6ebf8;
+}
+
+html[data-theme="dark"] .progress {
+    background-color: #232a45;
+}
+
+/* ------------------------ komponen kustom halaman ----------------------- */
+html[data-theme="dark"] .td-card,
+html[data-theme="dark"] .kartu-pilar,
+html[data-theme="dark"] .papan-divisi {
+    background: #1a1f36 !important;
+    border-color: rgba(255, 255, 255, .09) !important;
+}
+
+html[data-theme="dark"] .baris-divisi:hover {
+    background: rgba(120, 140, 255, .08) !important;
+}
+
+/* Papan peringkat anggota (Dashboard): gradien terangnya digelapkan,
+   supaya tulisan terang di dalamnya tetap terbaca */
+html[data-theme="dark"] .rank-gold {
+    background: linear-gradient(135deg, #4a3a10 0%, #6d5514 100%) !important;
+    box-shadow: 0 2px 10px rgba(245, 159, 11, .22) !important;
+}
+
+html[data-theme="dark"] .rank-silver {
+    background: linear-gradient(135deg, #2e3546 0%, #454e63 100%) !important;
+}
+
+html[data-theme="dark"] .rank-bronze {
+    background: linear-gradient(135deg, #452617 0%, #5f3520 100%) !important;
+}
+
+html[data-theme="dark"] .rank-default {
+    background-color: #20263f !important;
+    border-left: 5px solid #374063 !important;
+}
+
+/* Tulisan kecil di dalam papan peringkat: dibikin lebih terang supaya
+   tetap terbaca di atas latar gelap (emas/perak/perunggu yang sudah digelapkan) */
+html[data-theme="dark"] .rank-item .text-muted,
+html[data-theme="dark"] .rank-item small {
+    color: #cfd8ea !important;
+}
+
+html[data-theme="dark"] .rank-item .text-primary {
+    color: #ffd666 !important;
+}
+
+/* Beberapa kotak warnanya masih ditulis langsung di file tampilan (inline style).
+   Inline style tidak bisa dikalahkan oleh kelas biasa, jadi kita sasar nilainya
+   langsung — hanya untuk warna terang yang terbukti membuat tulisan tak terbaca. */
+html[data-theme="dark"] [style*="background-color: #f8f9fa"],
+html[data-theme="dark"] [style*="background-color:#f8f9fa"],
+html[data-theme="dark"] [style*="background: #f8f9fa"],
+html[data-theme="dark"] [style*="background-color: #f0f8f5"],
+html[data-theme="dark"] [style*="background-color:#f0f8f5"],
+html[data-theme="dark"] [style*="background-color: #fff9db"],
+html[data-theme="dark"] [style*="background-color: #f5f0fd"],
+html[data-theme="dark"] [style*="background-color: #eef2ff"],
+html[data-theme="dark"] [style*="background: #f8f9fc"],
+html[data-theme="dark"] [style*="background-color: #f8f9fc"],
+html[data-theme="dark"] [style*="background: #fff;"],
+html[data-theme="dark"] [style*="background: #ffffff;"],
+html[data-theme="dark"] [style*="background-color: #fff;"],
+html[data-theme="dark"] [style*="background-color: #ffffff;"] {
+    background-color: #20263f !important;
+}
+
+html[data-theme="dark"] .catatan-item {
+    background: #20263f !important;
+    border-left-color: #8b5cf6 !important;
+}
+
+html[data-theme="dark"] .jejak-item::before {
+    background: rgba(255, 255, 255, .14);
+}
+
+html[data-theme="dark"] .dropdown-item {
+    color: #cbd5e1;
+}
+
+/* Sub-menu sidebar (Daftar Divisi): latarnya sudah digelapkan, jadi tulisannya
+   harus diterangkan — kalau tidak, tulisan gelap di atas latar gelap.
+   Selector panjang + !important perlu karena SB Admin memakai
+   ".sidebar .nav-item .collapse .collapse-inner .collapse-item" */
+html[data-theme="dark"] .sidebar .nav-item .collapse .collapse-inner .collapse-item,
+html[data-theme="dark"] .sidebar .nav-item .collapsing .collapse-inner .collapse-item,
+html[data-theme="dark"] .collapse-item {
+    color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .collapse-item:hover,
+html[data-theme="dark"] .collapse-item:focus,
+html[data-theme="dark"] .collapse-item.active {
+    background-color: #2b3352 !important;
+    color: #ffffff !important;
+}
+
+html[data-theme="dark"] .sidebar .collapse-inner .collapse-header,
+html[data-theme="dark"] .collapse-header {
+    color: #93a0c0 !important;
+}
+
+html[data-theme="dark"] .collapse-inner {
+    background-color: #1a1f36 !important;
+}
+
+html[data-theme="dark"] .dropdown-item:hover,
+html[data-theme="dark"] .dropdown-item:focus {
+    background-color: #232a45;
+    color: #fff;
+}
+
+html[data-theme="dark"] .dropdown-divider,
+html[data-theme="dark"] hr,
+html[data-theme="dark"] .sidebar-divider {
+    border-color: rgba(255, 255, 255, .08);
+}
+
+html[data-theme="dark"] pre,
+html[data-theme="dark"] code {
+    background-color: #141930;
+    color: #d5dcee;
+}
+
+html[data-theme="dark"] .modal-backdrop.show {
+    opacity: .7;
+}
+
+html[data-theme="dark"] .nav-tabs .nav-link {
+    color: #98a2bd;
+}
+
+html[data-theme="dark"] .nav-tabs .nav-link.active {
+    background-color: #1a1f36;
+    border-color: #2b3352 #2b3352 #1a1f36;
+    color: #e8ecf8;
+}
+
+html[data-theme="dark"] .page-link {
+    background-color: #1a1f36;
+    border-color: #2b3352;
+    color: #c3cadd;
+}
+
+html[data-theme="dark"] .border,
+html[data-theme="dark"] .border-top,
+html[data-theme="dark"] .border-right,
+html[data-theme="dark"] .border-bottom,
+html[data-theme="dark"] .border-left {
+    border-color: rgba(255, 255, 255, .10) !important;
+}
+
+/* tombol switch tema di topbar */
+#tombolTema {
+    color: #b9c2da;
+    font-size: 1.05rem;
+    padding: .35rem .6rem;
+    border: 0;
+    background: transparent;
+}
+
+#tombolTema:hover {
+    color: #8b5cf6;
+}
+
+html[data-theme="dark"] #tombolTema {
+    color: #ffd666;
+}
+
+/* ==========================================================================
+   CETAK / SIMPAN PDF → PAKSA TERANG
+   Supaya hasil cetak selalu hitam-putih yang rapi, walaupun layar sedang gelap.
+   ========================================================================== */
+@media print {
+    html[data-theme="dark"] body,
+    html[data-theme="dark"] #content {
+        background: #fff !important;
+        background-image: none !important;
+        color: #000 !important;
+    }
+
+    html[data-theme="dark"] .card,
+    html[data-theme="dark"] .card-header,
+    html[data-theme="dark"] .card-body,
+    html[data-theme="dark"] .kartu-pilar,
+    html[data-theme="dark"] .papan-divisi,
+    html[data-theme="dark"] .td-card,
+    html[data-theme="dark"] .table,
+    html[data-theme="dark"] .table thead th,
+    html[data-theme="dark"] .table td,
+    html[data-theme="dark"] .modal-content,
+    html[data-theme="dark"] .alert,
+    html[data-theme="dark"] .catatan-item,
+    html[data-theme="dark"] .bg-light,
+    html[data-theme="dark"] .bg-white {
+        background: #fff !important;
+        background-image: none !important;
+        color: #000 !important;
+        border-color: #999 !important;
+        box-shadow: none !important;
+    }
+
+    html[data-theme="dark"] .text-muted,
+    html[data-theme="dark"] .text-gray-800,
+    html[data-theme="dark"] .text-dark,
+    html[data-theme="dark"] h1.h3.text-gray-800 {
+        color: #333 !important;
+        -webkit-text-fill-color: #333 !important;
+    }
+
+    html[data-theme="dark"] .kinerja-hero {
+        background: #f1f3f8 !important;
+        color: #000 !important;
+    }
+
+    html[data-theme="dark"] .badge {
+        border: 1px solid #666 !important;
+        color: #000 !important;
+        background: #eee !important;
+    }
+}

@@ -25,6 +25,7 @@ class User extends Authenticatable
         'jabatan',
         'background_image',
         'theme_color',
+        'theme_mode',
         'social_links',
         'total_login_days',
         'last_login_date',

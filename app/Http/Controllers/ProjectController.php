@@ -44,17 +44,24 @@ class ProjectController extends Controller
 
     private function notifyUsers($users, string $type, ?int $projectId, callable $buildMessage): void
     {
-        foreach ($users as $user) {
-            if (empty($user->phone)) {
-                continue;
+        // ⚡ PERF: pengiriman ditunda sampai SETELAH halaman dikirim ke pengguna, supaya
+        // tombol review/approve/rilis tidak ikut menunggu balasan WAHA (dulu bisa 9+
+        // detik untuk 6 penerima). Lihat WhatsappNotifier::kirimSetelahResponse().
+        $daftarPenerima = collect($users)->values()->all();
+
+        WhatsappNotifier::kirimSetelahResponse(function () use ($daftarPenerima, $type, $projectId, $buildMessage) {
+            foreach ($daftarPenerima as $user) {
+                if (empty($user->phone)) {
+                    continue;
+                }
+                try {
+                    $message = $buildMessage($this->notifier, $user);
+                    $this->notifier->sendAndLog($user, $projectId, $type, $message);
+                } catch (\Throwable $e) {
+                    Log::warning("[Workflow Notif] Gagal kirim {$type} ke user {$user->id}: {$e->getMessage()}");
+                }
             }
-            try {
-                $message = $buildMessage($this->notifier, $user);
-                $this->notifier->sendAndLog($user, $projectId, $type, $message);
-            } catch (\Throwable $e) {
-                Log::warning("[Workflow Notif] Gagal kirim {$type} ke user {$user->id}: {$e->getMessage()}");
-            }
-        }
+        });
     }
 
     /**

@@ -318,17 +318,20 @@ class MeetingController extends Controller
         $notifier = app(WhatsappNotifier::class);
         $waktu    = substr($meeting->start_time, 0, 5) . ' - ' . substr($meeting->end_time, 0, 5);
 
-        foreach ($recipients as $user) {
-            $message = $notifier->meetingPublishedTemplate(
-                $user->name,
-                $meeting->title,
-                $meeting->date_formatted,
-                $waktu,
-                $meeting->location ?? '-',
-                $meeting->id
-            );
-            $notifier->sendAndLog($user, null, 'meeting_published', $message);
-        }
+        // ⚡ PERF: dikirim setelah halaman pindah, supaya publikasi rapat tidak menunggu WA
+        WhatsappNotifier::kirimSetelahResponse(function () use ($recipients, $notifier, $meeting, $waktu) {
+            foreach ($recipients as $user) {
+                $message = $notifier->meetingPublishedTemplate(
+                    $user->name,
+                    $meeting->title,
+                    $meeting->date_formatted,
+                    $waktu,
+                    $meeting->location ?? '-',
+                    $meeting->id
+                );
+                $notifier->sendAndLog($user, null, 'meeting_published', $message);
+            }
+        });
     }
 
     private function notifyActionItems(Meeting $meeting): void
@@ -349,19 +352,24 @@ class MeetingController extends Controller
 
         $notifier = app(WhatsappNotifier::class);
 
-        foreach ($items as $item) {
-            $uid = $item['assigned_to'] ?? null;
-            if (!$uid || !isset($users[$uid])) continue;
+        // ⚡ PERF: dikirim setelah halaman pindah
+        WhatsappNotifier::kirimSetelahResponse(function () use ($items, $users, $notifier, $meeting) {
+            foreach ($items as $item) {
+                $uid = $item['assigned_to'] ?? null;
+                if (! $uid || ! isset($users[$uid])) {
+                    continue;
+                }
 
-            $user    = $users[$uid];
-            $message = $notifier->meetingActionItemTemplate(
-                $user->name,
-                $meeting->title,
-                $item['task'] ?? '-',
-                $item['deadline'] ?? '-',
-                $meeting->id
-            );
-            $notifier->sendAndLog($user, null, 'meeting_action_item', $message);
-        }
+                $user    = $users[$uid];
+                $message = $notifier->meetingActionItemTemplate(
+                    $user->name,
+                    $meeting->title,
+                    $item['task'] ?? '-',
+                    $item['deadline'] ?? '-',
+                    $meeting->id
+                );
+                $notifier->sendAndLog($user, null, 'meeting_action_item', $message);
+            }
+        });
     }
 }

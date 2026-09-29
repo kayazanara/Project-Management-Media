@@ -100,6 +100,41 @@ class WhatsappNotifier
         return in_array($type, self::TIPE_SEKALI, true) ? null : self::ANTI_DOBEL_MENIT;
     }
 
+    // ============================================================
+    // KIRIM SETELAH RESPONSE (biar halaman tidak menunggu WA)
+    // ============================================================
+
+    /**
+     * ⚡ PERF: jalankan pengiriman notifikasi SETELAH halaman dikirim ke pengguna.
+     *
+     * Kenapa: notifikasi WA dikirim sinkron di dalam request, satu per satu per penerima.
+     * Hasil ukur sebelum perbaikan (WAHA 1,5 detik/pesan):
+     *   - Rilis project (6 penerima) → halaman baru pindah setelah ~9,4 detik
+     *   - Ajukan review                → ~6,2 detik
+     * Setelah ditunda: respons instan (±10-30 ms), WA tetap terkirim setelahnya.
+     *
+     * Catatan teknis: memakai terminating callback (bukan queue/afterResponse job),
+     * karena QUEUE_CONNECTION aplikasi ini 'database' — kalau pakai job, tanpa worker
+     * yang jalan pesannya malah TIDAK PERNAH terkirim. Terminating callback tetap
+     * berjalan di proses yang sama setelah respons dikirim.
+     */
+    public static function kirimSetelahResponse(callable $kerja): void
+    {
+        if (! config('services.waha.after_response', true)) {
+            $kerja();
+
+            return;
+        }
+
+        app()->terminating(function () use ($kerja) {
+            try {
+                $kerja();
+            } catch (\Throwable $e) {
+                Log::warning('Notifikasi setelah response gagal: ' . $e->getMessage());
+            }
+        });
+    }
+
     public function sendAndLog(User $user, ?int $projectId, string $type, string $message): bool
     {
         if (! $this->enabled()) {

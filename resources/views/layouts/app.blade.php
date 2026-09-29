@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ auth()->check() ? (auth()->user()->theme_mode ?? 'light') : 'light' }}">
 
 <head>
     <meta charset="utf-8">
@@ -14,6 +14,10 @@
     <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
     <link href="{{ asset('sb-admin-2/css/sb-admin-2.min.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+
+    {{-- ⚡ FITUR: mode gelap/terang — CSS + anti-kedip + logika switch --}}
+    <link href="{{ asset('css/tema-gelap.css') }}" rel="stylesheet">
+    @include('partials.tema')
 
     <style>
         /* ===================================================== */
@@ -887,6 +891,15 @@
                     </button>
 
                     <ul class="navbar-nav ml-auto">
+                        {{-- ⚡ FITUR: switch mode gelap/terang (di samping profil) --}}
+                        <li class="nav-item d-flex align-items-center">
+                            <button type="button" id="tombolTema" class="btn btn-link nav-link"
+                                    onclick="pmGantiTema()" title="Ganti mode gelap/terang">
+                                <i id="ikonTema" class="fas fa-moon"></i>
+                                <span class="d-lg-none ml-1" style="font-size:.85rem">Tema</span>
+                            </button>
+                        </li>
+
                         <div class="topbar-divider d-none d-sm-block"></div>
 
                         <li class="nav-item dropdown no-arrow">

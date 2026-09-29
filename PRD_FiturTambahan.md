@@ -786,6 +786,134 @@ kosong, jejak lengkap, revisi ditutup, alasan wajib & minimal 10 karakter, hak a
 (Ketua Media / Kepala Divisi / Anggota ditolak), hanya saat Review, notifikasi khusus,
 tombol hanya untuk Pembina, penanda + "Belum ACC" tetap tampil setelah override.
 
+---
+
+## 🚀 PART 15 — KECEPATAN: NOTIFIKASI WA DIKIRIM SETELAH HALAMAN PINDAH (29 Sep 2026)
+
+**Keluhan:** "checklist, review, approve kok lama banget prosesnya".
+
+### 15.1 Hasil pengukuran (bukan dugaan)
+
+Alat ukur sementara mengukur aksi lewat HTTP kernel sungguhan + hitung query & panggilan WA.
+Database sama sekali **bukan** penyebabnya:
+
+| Aksi / halaman | Query | Waktu SQL | Panggilan WA |
+|---|---|---|---|
+| Checklist task | 1 | 0 ms | 0 |
+| Ajukan task review | 6 | 1 ms | 1 |
+| Scoring | 6 | 0 ms | 0 |
+| Rilis project | 19 | 1 ms | 5 |
+| Approve Ketua Media | 17 | 1 ms | 4 |
+| Mark complete | 15 | 1 ms | 4 |
+| Halaman project | 15 | 2 ms | 0 |
+| Monitoring Tim | 197 | 31 ms | 0 |
+
+Biang keroknya: WA dikirim **sinkron, satu per satu per penerima, di dalam request**.
+Kalau WAHA butuh 1,5 detik/pesan dan penerimanya 6 → halaman baru pindah setelah
+**9,2 detik**. Kalau WAHA menggantung, tiap panggilan bisa menunggu sampai timeout
+(sebelumnya 15 detik) → sampai **90 detik**.
+
+### 15.2 Perbaikan
+
+- `WhatsappNotifier::kirimSetelahResponse(callable)` — pekerjaan pengiriman didaftarkan
+  sebagai *terminating callback* (`app()->terminating`), jadi dijalankan **setelah**
+  halaman dikirim ke pengguna. Sengaja TIDAK pakai `dispatch()->afterResponse()` karena
+  `QUEUE_CONNECTION=database` (job akan nyangkut menunggu worker dan WA tidak terkirim).
+- Dipakai di 7 jalur: `ProjectController::notifyUsers`, `MeetingController::notifyPublish`
+  & `notifyActionItems`, `ContentController` (upload raw & stock).
+- Command `reminders:send` **tetap sinkron** karena laporannya butuh hasil nyata.
+- Timeout WAHA: `WAHA_TIMEOUT` (default **5 detik**, sebelumnya 15).
+  Bisa dimatikan: `WAHA_KIRIM_SETELAH_RESPONSE=false`.
+
+### 15.3 Bukti sebelum/sesudah (WAHA lambat 1,5 detik/pesan, 6 penerima)
+
+| | Waktu yang dirasakan pengguna | Panggilan WA di dalam request | WA terkirim |
+|---|---|---|---|
+| Sebelum | **9.231 ms** | 6 (menahan request) | 6 |
+| Sesudah | **61 ms** | **0** | 6 (di background) |
+
+### 15.4 Catatan jujur
+Total waktu pengiriman WA tidak berkurang — yang berubah **pengguna tidak menunggunya lagi**.
+Di server dengan beberapa worker php-fpm ini aman; kalau nanti pengguna sangat banyak,
+langkah berikutnya adalah queue + worker (`php artisan queue:work`).
+
+---
+
+## 🌙 PART 16 — MODE GELAP (29 Sep 2026)
+
+### 16.1 Cara pakai
+Switch di **topbar, tepat di samping menu profil** (ikon 🌙 bulan / 🌞 matahari).
+Klik langsung berubah tanpa reload.
+
+### 16.2 Pilihan disimpan di dua tempat
+- **Per akun** (`users.theme_mode`) → ikut kalau dibuka di HP/laptop lain.
+  Disimpan lewat `PATCH /preferensi/tema` (`PreferenceController::setTheme`).
+- **localStorage** (`pm-tema`) → dibaca skrip kecil di `<head>` *sebelum* halaman tampil,
+  jadi tidak ada kedipan putih saat halaman dibuka.
+
+### 16.3 Cakupan
+- Semua halaman berlayout utama **dan** halaman login.
+- Sidebar, topbar, kartu, tabel, form, modal, dropdown, alert, badge, tombol, paginasi.
+- Grafik Chart.js: warna teks & garis dibuat lebih terang otomatis saat gelap.
+- **Halaman Cetak dipaksa tetap terang** (`@media print`), jadi hasil cetak/PDF selalu
+  hitam-putih rapi. `reports/print.blade.php` punya tampilan sendiri dan tidak tersentuh.
+- Mode terang (tampilan lama) **tidak berubah sedikit pun** — semua aturan dikunci
+  selector `html[data-theme="dark"]`.
+
+### 16.4 Hasil audit kontras (WCAG, 14 halaman, dibandingkan gelap vs terang)
+
+Diaudit dengan Chrome headless: **setiap elemen berteks** diperiksa rasio kontrasnya
+(sadar gradien & sadar teks gradien), lalu hasil mode gelap dibandingkan mode terang
+untuk memastikan **tidak ada masalah baru**. Hasil akhir: **0 masalah baru di semua halaman**.
+
+| Halaman | Kontras kurang (terang) | Kontras kurang (gelap) |
+|---|---|---|
+| Daftar Project | 305 | 184 |
+| Tim Lapangan (divisi) | 397 | 111 |
+| Kinerja Ketua Media | 215 | 63 |
+| Monitoring Tim | 142 | 56 |
+| Workdesk | 154 | 35 |
+| Team Management | 141 | 53 |
+| Bahan Raw | 121 | 51 |
+| Stock Konten | 63 | 28 |
+| Meeting / Notulen | 48 | 29 |
+| Activity | 61 | 27 |
+| Detail Project | 75 | 30 |
+| Dashboard | 88 | 30 |
+| Cetak Laporan | 21 | 15 |
+| Form Project | 56 | 16 |
+
+Mode gelap **selalu menurunkan** jumlah temuan, dan angka mode terang tidak berubah
+sama sekali dibanding sebelum fitur ini dibuat (bukti mode terang tidak tersentuh).
+
+Temuan yang tersisa (badge `badge-success`, `badge-warning`, judul kecil sidebar)
+sudah ada sejak mode terang — bukan akibat mode gelap, jadi tidak diubah agar
+tampilan lamamu tetap sama.
+
+Kesalahan yang ketemu & dibetulkan selama audit:
+1. Aturan warna tautan dibuat `a:not(.btn)...` — sebelumnya ikut menimpa warna tombol
+   sehingga tulisan tombol abu jadi biru muda tak terbaca.
+2. `.text-primary/.text-info/.text-success/.text-warning/.text-danger` dibuat lebih terang
+   khusus mode gelap.
+3. Papan peringkat anggota (gradien emas/perak/perunggu) digelapkan + tulisan kecilnya
+   diterangkan.
+4. Kotak yang warnanya ditulis langsung di file tampilan (inline style, mis.
+   `background-color: #f8f9fa`, editor notulen `background: #fff`) disasar lewat
+   selector `[style*="..."]`.
+5. Sub-menu sidebar (Daftar Divisi) — tulisan `#3a3b45` jadi gelap-di-atas-gelap setelah
+   latarnya digelapkan. Selector panjang + `!important` diperlukan karena SB Admin
+   memakai `.sidebar .nav-item .collapse .collapse-inner .collapse-item`.
+
+### 16.5 Kolom baru (aditif)
+`users.theme_mode` (string 10, default `light`) — user lama otomatis terang.
+
+### 16.6 Uji
+`tests/Feature/TemaGelapTest.php` — 12 tes: simpan pilihan, kembali ke terang, nilai tak
+dikenal ditolak (422), tamu ditolak (401), default terang, halaman memakai `data-theme`
+sesuai akun, skrip anti-kedip + tombol switch ada, posisi tombol **sebelum** menu profil,
+CSS dimuat, halaman login ikut, aturan cetak memaksa latar putih.
+
+
 
 
 

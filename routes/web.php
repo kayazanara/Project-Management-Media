@@ -214,6 +214,10 @@ Route::middleware(['auth'])->group(function () {
     // PROFILE
     // ==========================================
     Route::get('/profile/{id}', [ProfileController::class, 'show'])->name('profile.show');
+
+    // ⚡ FITUR: simpan preferensi tema (mode gelap/terang) milik user yang login
+    Route::patch('/preferensi/tema', [\App\Http\Controllers\PreferenceController::class, 'setTheme'])
+        ->name('preferensi.tema');
     Route::get('/my-profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/my-profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::post('/my-profile/background', [ProfileController::class, 'updateBackground'])->name('profile.updateBackground');

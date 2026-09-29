@@ -16,6 +16,10 @@
     <!-- Bootstrap core (SB Admin 2) -->
     <link href="{{ asset('sb-admin-2/css/sb-admin-2.min.css') }}" rel="stylesheet">
 
+    {{-- ⚡ FITUR: mode gelap/terang --}}
+    <link href="{{ asset('css/tema-gelap.css') }}" rel="stylesheet">
+    @include('partials.tema')
+
     <style>
         * {
             font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;

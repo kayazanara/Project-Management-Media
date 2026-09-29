@@ -36,7 +36,12 @@ return [
         'url' => env('WAHA_URL', 'http://localhost:3000'),
         'api_key' => env('WAHA_API_KEY'),
         'session' => env('WAHA_SESSION', 'default'),
-        'timeout' => 15,
+        // ⚡ Dipakai sebagai batas tunggu per pesan. Sebelumnya 15 detik: kalau WAHA
+        // menggantung, 6 penerima bisa membuat halaman tertahan sampai 90 detik.
+        'timeout' => env('WAHA_TIMEOUT', 5),
+        // ⚡ Kirim notifikasi SETELAH halaman dikirim ke pengguna (respons jadi instan).
+        // Setel false kalau ingin kembali mengirim di dalam request.
+        'after_response' => env('WAHA_AFTER_RESPONSE', true),
     ],
 
 ];
