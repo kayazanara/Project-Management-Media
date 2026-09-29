@@ -707,4 +707,47 @@ Menu di sidebar hanya tampil untuk Pembina.
 task telat/project lewat deadline, pembagian bobot, tren kosong, penanda waktu workflow,
 bottleneck, catatan evaluasi + regresi tanggal `Y-m-d`).
 
+---
+
+## 📨 PART 13 — ATURAN PENERIMA & ANTI-DOBEL NOTIFIKASI WA (29 Sep 2026)
+
+Diperbaiki setelah ditemukan pesan WA terkirim ke orang yang tidak seharusnya.
+
+### 13.1 Penerima per jalur
+
+| Jalur notifikasi | Penerima |
+|---|---|
+| Project baru (Planning) | Ketua Media aktif |
+| Task diajukan ke Pembina | Pembina aktif |
+| **Project dirilis** | Anggota project aktif + **Ketua Media** (pelaku tidak dikirimi) |
+| **Project disetujui (ACC dua pihak)** | Anggota project aktif + **Ketua Media** |
+| Minta revisi | Anggota project aktif + **Ketua Media** |
+| Project selesai / dibatalkan complete | Anggota project aktif + **Ketua Media** |
+| **Reminder H-3 / H-1 / Overdue** (harian 08:00) | Anggota project aktif + **Ketua Media** |
+| Upload raw | User aktif di divisi tujuan saja |
+| Upload stok konten | Divisi Broadcast aktif |
+| Notulen rapat dipublikasikan | Pembina + Ketua Media + Kepala Divisi **yang status Aktif** |
+| Action item rapat | User yang ditugaskan saja |
+
+Aturan umum: `status = 'Aktif'` WAJIB disaring di semua jalur, pelaku aksi tidak dikirimi
+notifikasi aksinya sendiri, dan **Kepala Divisi yang tidak terlibat TIDAK menerima apa pun**
+tentang project itu.
+
+### 13.2 Aturan anti-dobel (`WhatsappNotifier`)
+
+| Jenis | Aturan |
+|---|---|
+| **Sekali saja** (`reminder_h3`, `reminder_h1`, `overdue`, `project_created`) | Dicek seumur hidup per (jenis, project, user) |
+| **Kejadian berulang** (rilis, ACC, revisi, reopen, complete) | Hanya anti-dobel **30 menit** → revisi ke-2 / reopen ke-2 **tetap terkirim** |
+| **Tanpa project** (rapat & action item) | Dicek dari **pesan yang identik** → publish ulang tidak mengirim ulang pesan yang sama, tapi pesan yang isinya berubah tetap terkirim |
+
+Jendela & daftar "sekali saja" terpusat di konstanta `WhatsappNotifier::TIPE_SEKALI` dan
+`WhatsappNotifier::ANTI_DOBEL_MENIT`.
+
+### 13.3 Uji
+`tests/Feature/NotifikasiWaTest.php` — 12 tes (lingkup penerima reminder, ACC, rilis,
+user non-aktif, user tanpa nomor, anti-dobel pesan identik, kejadian berulang tetap
+terkirim, job mati sudah dihapus).
+
+
 

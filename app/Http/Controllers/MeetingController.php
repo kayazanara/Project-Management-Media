@@ -305,7 +305,10 @@ class MeetingController extends Controller
 
     private function notifyPublish(Meeting $meeting): void
     {
+        // ⚡ PERBAIKAN 29 Sep: WAJIB filter status Aktif — sebelumnya user yang sudah
+        // non-aktif (keluar/pindah) tetap menerima WA notulen rapat.
         $recipients = User::whereIn('division_role', ['pembina', 'ketua_media', 'kepala_divisi'])
+            ->where('status', 'Aktif')
             ->whereNotNull('phone')
             ->where('phone', '!=', '')
             ->get();

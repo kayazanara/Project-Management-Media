@@ -176,7 +176,12 @@ class SendDeadlineReminders extends Command
     // ============================================================
 
     /**
-     * Penerima = semua user yang terlibat project + semua Kepala Divisi aktif.
+     * Penerima reminder (H-3 / H-1 / overdue) = anggota project + Ketua Media.
+     *
+     * ⚡ PERBAIKAN 29 Sep: sebelumnya ditambah "semua kepala_divisi", sehingga kepala divisi
+     * yang SAMA SEKALI tidak terlibat tetap menerima reminder deadline project orang lain
+     * (ketahuan dari notification_logs). Sekarang hanya yang benar-benar terkait.
+     * Ketua Media tetap ikut karena tugasnya memastikan semua project tiap divisi lancar.
      */
     private function getRecipients(Project $project)
     {
@@ -184,7 +189,7 @@ class SendDeadlineReminders extends Command
 
         return User::where(function ($q) use ($memberIds) {
                 $q->whereIn('id', $memberIds)
-                  ->orWhere('division_role', 'kepala_divisi');
+                  ->orWhere('division_role', 'ketua_media');
             })
             ->where('status', 'Aktif')
             ->get();

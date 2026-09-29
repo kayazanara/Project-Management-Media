@@ -72,6 +72,34 @@ class WhatsappNotifier
         }
     }
 
+    // ============================================================
+    // ATURAN ANTI-DOBEL
+    // ============================================================
+
+    /**
+     * Jenis notifikasi yang cukup dikirim SEKALI untuk selamanya.
+     * Reminder (H-3/H-1/overdue) & pemberitahuan project baru tidak perlu diulang.
+     */
+    public const TIPE_SEKALI = ['reminder_h3', 'reminder_h1', 'overdue', 'project_created'];
+
+    /**
+     * Jendela anti-dobel (menit) untuk jenis KEJADIAN (rilis, ACC, revisi, reopen, dst).
+     * ⚡ PENTING: dulu semua jenis di-skip SELAMANYA kalau user itu sudah pernah menerima
+     * jenis yang sama untuk project yang sama — akibatnya revisi KEDUA, pengajuan review
+     * ulang, atau reopen kedua TIDAK PERNAH terkirim (pesan yang seharusnya terkirim malah
+     * dibatalkan diam-diam). Sekarang jenis kejadian hanya anti-dobel dalam jendela pendek
+     * (menahan klik dobel), sedangkan yang berulang tetap boleh terkirim.
+     */
+    public const ANTI_DOBEL_MENIT = 30;
+
+    /**
+     * Berapa menit jendela anti-dobel untuk sebuah jenis? null = permanen (sekali saja).
+     */
+    public static function jendelaDedupe(string $type): ?int
+    {
+        return in_array($type, self::TIPE_SEKALI, true) ? null : self::ANTI_DOBEL_MENIT;
+    }
+
     public function sendAndLog(User $user, ?int $projectId, string $type, string $message): bool
     {
         if (! $this->enabled()) {
@@ -85,8 +113,20 @@ class WhatsappNotifier
             return false;
         }
 
-        if ($projectId && NotificationLog::alreadySent($type, $projectId, $user->id)) {
-            Log::info("Skip duplikat notif: {$type} project={$projectId} user={$user->id}");
+        if ($projectId) {
+            // Notifikasi ber-project: dicek per (jenis, project, user)
+            $jendela = self::jendelaDedupe($type);
+
+            if (NotificationLog::alreadySent($type, $projectId, $user->id, $jendela)) {
+                Log::info("Skip duplikat notif: {$type} project={$projectId} user={$user->id}"
+                    . ($jendela === null ? ' (sekali saja)' : " (dalam {$jendela} menit)"));
+                return true;
+            }
+        } elseif (NotificationLog::pesanSamaSudahTerkirim($type, $user->id, $message)) {
+            // Notifikasi tanpa project (mis. rapat & action item): dicek dari PESAN yang persis
+            // sama, supaya simpan-ulang/publish-ulang rapat tidak mengirim pesan yang sama lagi,
+            // tapi pesan yang isinya BERUBAH tetap terkirim.
+            Log::info("Skip notif identik (tanpa project): {$type} user={$user->id}");
             return true;
         }
 

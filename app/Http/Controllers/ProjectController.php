@@ -59,18 +59,40 @@ class ProjectController extends Controller
 
     /**
      * ⚡ Ambil daftar penerima notifikasi untuk sebuah project.
+     *
+     * Isi:
+     * - Anggota project yang berstatus Aktif (kepala divisi yang jadi anggota ikut).
+     * - Pembina DIKELUARKAN (dia pelaku utama alur ini — scoring, ACC, rilis).
+     * - ⚡ Ketua Media SELALU ikut sebagai pemantau, walaupun bukan anggota project,
+     *   karena tugasnya memastikan semua tugas & project tiap divisi berjalan lancar.
+     *   (Sebelumnya Ketua Media juga dibuang, sehingga dia dinilai di halaman Kinerja
+     *   atas hal-hal yang notifikasinya sendiri tidak pernah dia terima.)
+     * - Pelaku aksi ($excludeUserId) tidak dikirimi notifikasi aksinya sendiri.
      */
     private function getProjectRecipients(Project $project, ?int $excludeUserId = null)
     {
-        $query = $project->users()
+        $anggotaIds = $project->users()
             ->where('users.status', 'Aktif')
-            ->whereNotIn('users.division_role', ['pembina', 'ketua_media']);
+            ->whereNotIn('users.division_role', ['pembina', 'ketua_media'])
+            ->pluck('users.id')
+            ->all();
+
+        $ketuaMediaIds = User::where('division_role', 'ketua_media')
+            ->where('status', 'Aktif')
+            ->pluck('id')
+            ->all();
+
+        $ids = array_unique(array_merge($anggotaIds, $ketuaMediaIds));
 
         if ($excludeUserId) {
-            $query->where('users.id', '!=', $excludeUserId);
+            $ids = array_diff($ids, [$excludeUserId]);
         }
 
-        return $query->get();
+        if (empty($ids)) {
+            return User::whereRaw('1 = 0')->get();
+        }
+
+        return User::whereIn('id', $ids)->get();
     }
 
     // ============================================================
@@ -764,9 +786,11 @@ class ProjectController extends Controller
             $project->update(['status' => Project::STATUS_APPROVED]);
             $project->update(['status' => Project::STATUS_UPLOAD]);
 
-            $recipients = User::where('division_role', 'kepala_divisi')
-                ->where('status', 'Aktif')
-                ->get();
+            // ⚡ PERBAIKAN 29 Sep: dulu ke SEMUA kepala_divisi (tanpa cek keterlibatan),
+            // sehingga kepala divisi yang tidak ada kaitannya menerima WA "project sudah
+            // di-ACC, silakan upload konten" untuk project orang lain. Sekarang memakai
+            // aturan penerima yang sama dengan jalur lain (anggota project + Ketua Media).
+            $recipients = $this->getProjectRecipients($project, $user->id);
 
             $this->notifyUsers(
                 $recipients,
