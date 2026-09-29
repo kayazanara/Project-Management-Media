@@ -207,14 +207,16 @@
                         <table class="table table-sm mb-0" style="font-size:.76rem">
                             @foreach($p['detail']['sub'] as $sub)
                                 <tr>
-                                    <td class="pl-0 py-1 text-muted" style="border-top:1px dashed rgba(0,0,0,.07)">
-                                        {{ $sub['label'] }}
+                                    <td class="pl-0 py-1" style="border-top:1px dashed rgba(0,0,0,.07)">
+                                        <span class="text-muted">{{ $sub['label'] }}</span>
                                         <div class="text-dark">
                                             <strong>{{ $sub['nilai'] }}</strong> {{ $sub['satuan'] }}
-                                            <span class="text-muted">/ {{ $sub['target'] }}</span>
+                                        </div>
+                                        <div class="text-muted" style="font-size:.68rem">
+                                            target: {{ $sub['target'] }}
                                         </div>
                                     </td>
-                                    <td class="pr-0 py-1 text-right align-middle" style="border-top:1px dashed rgba(0,0,0,.07);width:52px">
+                                    <td class="pr-0 py-1 text-right align-top" style="border-top:1px dashed rgba(0,0,0,.07);width:52px">
                                         <span class="badge badge-{{ $sub['skor'] >= 85 ? 'success' : ($sub['skor'] >= 70 ? 'warning' : 'danger') }}">
                                             {{ $sub['skor'] }}
                                         </span>
@@ -318,6 +320,10 @@
                                         <td class="text-center">
                                             @if($b['hari'] === null)
                                                 <span class="text-muted">—</span>
+                                            @elseif($b['perkiraan'] ?? false)
+                                                <span title="Perkiraan dari perubahan terakhir project — waktu masuk Review belum tercatat (data lama)">
+                                                    ≥{{ $b['hari'] }} hari<sup>*</sup>
+                                                </span>
                                             @else
                                                 <strong>{{ $b['hari'] }}</strong> hari
                                             @endif
@@ -328,6 +334,14 @@
                             </tbody>
                         </table>
                     </div>
+
+                    @if(collect($bottleneck)->where('perkiraan', true)->count() > 0)
+                        <div class="px-3 py-2 text-muted" style="font-size:.72rem;border-top:1px solid rgba(0,0,0,.05)">
+                            <sup>*</sup>Perkiraan — waktu masuk tahap Review-nya belum tercatat, jadi diambil dari
+                            perubahan terakhir project (data sebelum fitur ini aktif). Angka pasti mulai terkumpul
+                            untuk project yang masuk Review setelah pembaruan ini.
+                        </div>
+                    @endif
                 @endif
             </div>
         </div>
@@ -359,6 +373,15 @@
 </div>
 
 <!-- ============================ PAPAN DIVISI ============================ -->
+@if(($ringkas['project_tanpa_anggota'] ?? 0) > 0)
+    <div class="alert alert-warning shadow-sm" style="border-radius:12px;font-size:.86rem">
+        <i class="fas fa-exclamation-triangle mr-1"></i>
+        Ada <strong>{{ $ringkas['project_tanpa_anggota'] }} project tanpa anggota</strong> — project seperti ini
+        tidak bisa dipetakan ke divisi mana pun, jadi <strong>tidak ikut terhitung di papan divisi</strong>.
+        Lengkapi anggotanya di <a href="{{ route('projects.index') }}">Project Management</a> supaya ikut terpantau.
+    </div>
+@endif
+
 <div class="card shadow-sm mb-4" style="border-radius:12px">
     <div class="card-header py-3 bg-white d-flex align-items-center justify-content-between">
         <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-th-large mr-1"></i> Papan 4 Divisi</h6>

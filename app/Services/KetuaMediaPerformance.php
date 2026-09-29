@@ -133,7 +133,7 @@ class KetuaMediaPerformance
 
         // ── Project + anggotanya (untuk memetakan project -> divisi) ──
         $projects = Project::query()
-            ->select('id', 'name', 'status', 'deadline', 'start_date', 'created_at', 'completed_at',
+            ->select('id', 'name', 'status', 'deadline', 'start_date', 'created_at', 'updated_at', 'completed_at',
                      'scored_at', 'released_at', 'approved_by_pembina_at', 'approved_by_ketua_at',
                      'is_overdue', 'task_submitted_at', 'task_submitted_by', 'review_requested_at')
             ->with('users:id,name,division')
@@ -216,7 +216,7 @@ class KetuaMediaPerformance
             // ini memang menggambarkan KONDISI SEKARANG, bukan angka periode. Skornya
             // kosong ("—") karena memang belum ada data periode untuk dinilai.
             $kosong['divisi']     = $this->pilarKesehatanDivisi($data, $start, $end)['detail']['divisi'] ?? [];
-            $kosong['bottleneck'] = $this->bottleneck($data);
+            $kosong['bottleneck'] = $this->menungguTindakan($data);
 
             return $kosong;
         }
@@ -226,9 +226,14 @@ class KetuaMediaPerformance
         // kalau tidak, bulan lampau akan terus berubah setiap halaman dibuka.
         $sertakanSekarang = $this->periodeTermasukHariIni($end);
 
+        // ⚡ Daftar "menunggu tindakan" dihitung SEKALI di sini, lalu dipakai DUA tempat:
+        // (a) angka di kartu pilar Kecepatan Alur, (b) daftar/tabel di halaman.
+        // Dengan begitu angka di kartu dan jumlah baris daftar tidak mungkin berbeda.
+        $menungguTindakan = $this->menungguTindakan($data);
+
         $pilar = [
             'kesehatan_divisi' => $this->pilarKesehatanDivisi($data, $start, $end),
-            'kecepatan_alur'   => $this->pilarKecepatanAlur($data, $ketua, $start, $end, $sertakanSekarang),
+            'kecepatan_alur'   => $this->pilarKecepatanAlur($data, $ketua, $start, $end, $sertakanSekarang, $menungguTindakan),
             'keterlibatan'     => $this->pilarKeterlibatan($data, $ketua, $start, $end),
             'ketuntasan'       => $this->pilarKetuntasan($data, $start, $end, $sertakanSekarang),
         ];
@@ -256,7 +261,7 @@ class KetuaMediaPerformance
             'pilar'         => $pilar,
             'pilar_dinilai' => $pilarAdaData,
             'divisi'        => $pilar['kesehatan_divisi']['detail']['divisi'] ?? [],
-            'bottleneck'    => $this->bottleneck($data),
+            'bottleneck'    => $menungguTindakan,
             'timeline'      => $this->timeline($data, $ketua, $start, $end),
             'ringkasan'     => $this->ringkasan($data, $start, $end),
         ];
@@ -469,7 +474,7 @@ class KetuaMediaPerformance
     // PILAR 2 — KECEPATAN ALUR (20%)
     // ============================================================
 
-    private function pilarKecepatanAlur(array $data, User $ketua, Carbon $start, Carbon $end, bool $sertakanSekarang = true): array
+    private function pilarKecepatanAlur(array $data, User $ketua, Carbon $start, Carbon $end, bool $sertakanSekarang = true, array $menungguTindakan = []): array
     {
         // ── (a) Project yang MASIH nyangkut di Planning (task belum disusun/diajukan) ──
         $nyangkut = [];
@@ -501,25 +506,29 @@ class KetuaMediaPerformance
         $rataSusun = count($lamaSusun) > 0 ? array_sum($lamaSusun) / count($lamaSusun) : null;
 
         // ── (c) Lama tunggu ACC dia (project masuk Review -> dia ACC) ──
+        // Waktu masuk Review diambil lewat waktuMasukReview() supaya project lama tetap
+        // bisa diukur (penanda resmi -> jejak pengajuan -> perkiraan yang ditandai jujur).
         $lamaAcc = [];
-        $menungguAcc = 0;
 
         foreach ($data['projects'] as $p) {
-            if (! $p->review_requested_at) {
-                continue;
-            }
-
             if ($p->approved_by_ketua_at) {
-                if ($p->approved_by_ketua_at->between($start, $end)) {
-                    $lamaAcc[] = (float) $p->review_requested_at->diffInHours($p->approved_by_ketua_at) / 24;
+                if (! $p->approved_by_ketua_at->between($start, $end)) {
+                    continue;
+                }
+
+                $waktu = $this->waktuMasukReview($p, $data);
+                if ($waktu['waktu'] && $waktu['waktu']->lessThanOrEqualTo($p->approved_by_ketua_at)) {
+                    $lamaAcc[] = (float) $waktu['waktu']->diffInHours($p->approved_by_ketua_at) / 24;
                 }
                 continue;
             }
 
             // masih menunggu ACC (project masih di tahap Review)
             if ($p->status === Project::STATUS_REVIEW) {
-                $menungguAcc++;
-                $lamaAcc[] = (float) $p->review_requested_at->diffInHours(now()) / 24;
+                $waktu = $this->waktuMasukReview($p, $data);
+                if ($waktu['waktu']) {
+                    $lamaAcc[] = (float) $waktu['waktu']->diffInHours(now()) / 24;
+                }
             }
         }
 
@@ -548,16 +557,18 @@ class KetuaMediaPerformance
             ];
         }
 
-        // Selalu ada datanya: kondisi "menunggu tindakan dia" saat ini.
-        // Hanya dinilai kalau periode yang dilihat memang mencakup hari ini.
+        // Kondisi "menunggu tindakan dia" saat ini. Jumlahnya diambil dari DAFTAR yang sama
+        // yang ditampilkan di halaman (dihitung sekali di evaluate()) — bukan hitungan
+        // terpisah, supaya tidak mungkin beda dengan jumlah baris tabelnya.
         if ($sertakanSekarang) {
-            $menunggu = count($nyangkut) + $menungguAcc;
+            $jumlahMenunggu = count($menungguTindakan);
+
             $sub['menunggu_tindakan'] = [
-                'label'  => 'Sedang menunggu tindakan dia',
-                'nilai'  => $menunggu,
-                'satuan' => 'project',
-                'target' => '0 project',
-                'skor'   => $menunggu === 0 ? 100 : max(0, 100 - ($menunggu * 15)),
+                'label'  => 'Menunggu tindakan dia',
+                'nilai'  => $jumlahMenunggu,
+                'satuan' => 'item',
+                'target' => '0 item',
+                'skor'   => $jumlahMenunggu === 0 ? 100 : max(0, 100 - ($jumlahMenunggu * 15)),
             ];
         }
 
@@ -580,7 +591,7 @@ class KetuaMediaPerformance
             'detail'   => [
                 'sub'          => $sub,
                 'nyangkut'     => $nyangkut,
-                'menunggu_acc' => $menungguAcc,
+                'menunggu_acc' => count(array_filter($menungguTindakan, fn ($m) => $m['jenis'] === 'acc')),
             ],
         ];
     }
@@ -764,21 +775,32 @@ class KetuaMediaPerformance
     }
 
     // ============================================================
-    // BOTTLENECK — "menunggu tindakan Ketua Media"
+    // MENUNGGU TINDAKAN — SATU SUMBER ANGKA
     // ============================================================
 
     /**
-     * Daftar hal yang MENUNGGU SENTUHAN dia. Ini bagian paling praktis buat Pembina:
-     * bukan skor, tapi daftar kerjaan yang mandek.
+     * Daftar hal yang MENUNGGU SENTUHAN Ketua Media. Ini bagian paling praktis buat
+     * Pembina: bukan skor, tapi daftar kerjaan yang mandek.
+     *
+     * ⚡ PENTING (perbaikan 29 Sep): method ini adalah SATU-SATUNYA sumber daftar ini.
+     * Kartu pilar "Kecepatan Alur" memakai jumlah dari daftar INI juga, supaya angka di
+     * kartu dan jumlah baris di daftar **mustahil berbeda** — sebelumnya keduanya
+     * dihitung terpisah dengan syarat yang tidak sama, sehingga kartu menulis "0 project"
+     * padahal daftarnya berisi beberapa item.
+     *
+     * Aturan baris:
+     * - 1 baris = 1 sebab pada 1 project (project bisa muncul lebih dari sekali kalau
+     *   sebabnya beda, mis. menunggu ACC DAN ada revisi yang belum tuntas).
+     * - Revisi pada project yang SAMA dikelompokkan jadi 1 baris (tidak diulang-ulang).
      */
-    public function bottleneck(array $data): array
+    public function menungguTindakan(array $data): array
     {
         $daftar = [];
 
         foreach ($data['projects'] as $p) {
             $taskCount = count($data['task_per_project'][$p->id] ?? []);
 
-            // 1. Planning: task belum disusun / belum diajukan
+            // ── 1. Planning: task belum disusun / belum diajukan ──
             if ($p->status === Project::STATUS_PLANNING) {
                 $hari = (int) $p->created_at->diffInDays(now());
                 $daftar[] = [
@@ -787,55 +809,116 @@ class KetuaMediaPerformance
                     'project'    => $p->name,
                     'project_id' => $p->id,
                     'hari'       => $hari,
+                    'perkiraan'  => false,
                     'urgensi'    => $hari >= 2 ? 'tinggi' : 'sedang',
                     'aksi'       => $taskCount === 0 ? 'Susun task' : 'Ajukan ke Pembina',
                 ];
             }
 
-            // 2. Review: belum dia ACC
+            // ── 2. Review: belum dia ACC (menunggu tindakan langsung Ketua Media) ──
             if ($p->status === Project::STATUS_REVIEW && ! $p->approved_by_ketua_at) {
-                $hari = $p->review_requested_at ? (int) $p->review_requested_at->diffInDays(now()) : null;
+                $waktu = $this->waktuMasukReview($p, $data);
+                $hari  = $waktu['waktu'] ? (int) $waktu['waktu']->diffInDays(now()) : null;
+
                 $daftar[] = [
                     'jenis'      => 'acc',
                     'label'      => 'Menunggu ACC Ketua Media',
                     'project'    => $p->name,
                     'project_id' => $p->id,
                     'hari'       => $hari,
+                    'perkiraan'  => $waktu['perkiraan'],
                     'urgensi'    => ($hari === null || $hari >= 2) ? 'tinggi' : 'sedang',
                     'aksi'       => 'Beri ACC / minta revisi',
                 ];
             }
         }
 
-        // 3. Revisi yang masih menganggur (belum di-resolve)
+        // ── 3. Revisi yang masih menganggur (DIKELOMPOKKAN per project) ──
+        $perProject = [];
+
         foreach ($data['revisions'] as $r) {
             if ($r->resolved_at) {
                 continue;
             }
-            $project = $data['project_map'][$r->project_id] ?? null;
-            if (! $project) {
+            if (! isset($data['project_map'][$r->project_id])) {
                 continue;
             }
 
-            $hari = (int) $r->created_at->diffInDays(now());
+            $pid = $r->project_id;
+
+            if (! isset($perProject[$pid])) {
+                $perProject[$pid] = ['jumlah' => 0, 'tertua' => $r->created_at];
+            }
+
+            $perProject[$pid]['jumlah']++;
+
+            if ($r->created_at->lessThan($perProject[$pid]['tertua'])) {
+                $perProject[$pid]['tertua'] = $r->created_at;
+            }
+        }
+
+        foreach ($perProject as $pid => $info) {
+            $project = $data['project_map'][$pid];
+            $hari    = (int) $info['tertua']->diffInDays(now());
+
             $daftar[] = [
                 'jenis'      => 'revisi',
-                'label'      => 'Revisi belum tuntas',
+                'label'      => $info['jumlah'] . ' revisi belum tuntas',
                 'project'    => $project->name,
-                'project_id' => $project->id,
+                'project_id' => $pid,
                 'hari'       => $hari,
+                'perkiraan'  => false,
+                'jumlah'     => $info['jumlah'],
                 'urgensi'    => $hari >= 3 ? 'tinggi' : 'sedang',
                 'aksi'       => 'Dorong divisi menyelesaikan',
             ];
         }
 
+        // Urutkan: urgensi tinggi dulu, lalu paling lama menunggu
         usort($daftar, function ($a, $b) {
             $u = ['tinggi' => 0, 'sedang' => 1];
+
             return ($u[$a['urgensi']] ?? 2) <=> ($u[$b['urgensi']] ?? 2)
                 ?: (($b['hari'] ?? 0) <=> ($a['hari'] ?? 0));
         });
 
         return $daftar;
+    }
+
+    /**
+     * Kapan sebuah project MASUK tahap Review?
+     *
+     * Prioritas:
+     * 1. `review_requested_at` — penanda resmi (akurat).
+     * 2. Catatan pengajuan review di `project_revisions` (type = review_request) — juga akurat,
+     *    ini jejak asli pengajuannya, bukan tebakan.
+     * 3. Perubahan terakhir project — hanya PERKIRAAN, dan WAJIB ditandai `perkiraan = true`
+     *    di tampilan supaya Pembina tidak mengira itu angka pasti.
+     *
+     * Catatan: project yang sudah masuk Review SEBELUM fitur ini ada tidak punya (1) maupun (2)
+     * pada sebagian data, sehingga jatuh ke (3).
+     */
+    private function waktuMasukReview(Project $p, array $data): array
+    {
+        if ($p->review_requested_at) {
+            return ['waktu' => $p->review_requested_at, 'perkiraan' => false];
+        }
+
+        $revisi = $data['revisions']
+            ->where('project_id', $p->id)
+            ->where('type', 'review_request')
+            ->sortByDesc('created_at')
+            ->first();
+
+        if ($revisi && $revisi->created_at) {
+            return ['waktu' => $revisi->created_at, 'perkiraan' => false];
+        }
+
+        if ($p->updated_at) {
+            return ['waktu' => $p->updated_at, 'perkiraan' => true];
+        }
+
+        return ['waktu' => null, 'perkiraan' => false];
     }
 
     // ============================================================
@@ -947,15 +1030,23 @@ class KetuaMediaPerformance
             $p->status === Project::STATUS_COMPLETED && $p->completed_at && $p->completed_at->between($start, $end)
         );
 
+        // ⚡ Project yang TIDAK punya anggota tidak bisa dipetakan ke divisi mana pun,
+        // jadi dia tidak akan pernah muncul di papan divisi. Kalau dibiarkan diam-diam,
+        // Pembina mengira semua sudah terpantau padahal ada project "nyasar".
+        $tanpaAnggota = $data['projects']->filter(fn ($p) =>
+            empty($data['anggota_project'][$p->id] ?? [])
+        )->count();
+
         return [
-            'divisi'          => count($data['divisions']),
-            'project_aktif'   => $aktif->count(),
-            'project_telat'   => $telat->count(),
-            'project_selesai' => $selesaiPeriode->count(),
-            'task_terbuka'    => $taskTerbuka,
-            'task_lewat'      => $taskLewat,
-            'task_selesai'    => $selesai,
-            'ketepatan_waktu' => $selesai > 0 ? (int) round(($tepat / $selesai) * 100) : null,
+            'divisi'               => count($data['divisions']),
+            'project_aktif'        => $aktif->count(),
+            'project_telat'        => $telat->count(),
+            'project_selesai'      => $selesaiPeriode->count(),
+            'task_terbuka'         => $taskTerbuka,
+            'task_lewat'           => $taskLewat,
+            'task_selesai'         => $selesai,
+            'ketepatan_waktu'      => $selesai > 0 ? (int) round(($tepat / $selesai) * 100) : null,
+            'project_tanpa_anggota' => $tanpaAnggota,
         ];
     }
 
@@ -1045,14 +1136,15 @@ class KetuaMediaPerformance
             'bottleneck'    => [],
             'timeline'      => [],
             'ringkasan'     => [
-                'divisi'          => count($data['divisions'] ?? []),
-                'project_aktif'   => 0,
-                'project_telat'   => 0,
-                'project_selesai' => 0,
-                'task_terbuka'    => 0,
-                'task_lewat'      => 0,
-                'task_selesai'    => 0,
-                'ketepatan_waktu' => null,
+                'divisi'               => count($data['divisions'] ?? []),
+                'project_aktif'        => 0,
+                'project_telat'        => 0,
+                'project_selesai'      => 0,
+                'task_terbuka'         => 0,
+                'task_lewat'           => 0,
+                'task_selesai'         => 0,
+                'ketepatan_waktu'      => null,
+                'project_tanpa_anggota' => 0,
             ],
         ];
     }

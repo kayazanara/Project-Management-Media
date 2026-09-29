@@ -626,4 +626,110 @@ class KinerjaKetuaMediaTest extends TestCase
         $res->assertSee('Belum ada user dengan peran');
         $this->assertNull($res->viewData('ketua'));
     }
+
+    // ==========================================================
+    // REGRESI: ANGKA "MENUNGGU TINDAKAN" HARUS SAMA DENGAN DAFTARNYA
+    // (bug 29 Sep: kartu pilar menulis "0 project" padahal daftar bottleneck
+    //  berisi banyak item — karena dihitung dua tempat dengan syarat berbeda)
+    // ==========================================================
+
+    public function test_angka_menunggu_tindakan_sama_dengan_jumlah_baris_daftar(): void
+    {
+        $kepala = $this->kepalaDivisi('Lapangan');
+
+        // Project sudah masuk Review SEBELUM kolom penanda waktu ada
+        // → review_requested_at NULL (persis kondisi data lama di server)
+        $this->buatProject(Project::STATUS_REVIEW, [$kepala->id]);
+
+        $hasil  = $this->evaluasiSekarang($this->layanan()->dataset());
+        $daftar = $hasil['bottleneck'];
+        $sub    = $hasil['pilar']['kecepatan_alur']['detail']['sub']['menunggu_tindakan'] ?? null;
+
+        $this->assertCount(1, $daftar, 'Project yang menunggu ACC harus ada di daftar');
+        $this->assertNotNull($sub, 'Sub-metrik "menunggu tindakan" harus ada');
+        $this->assertSame(
+            count($daftar),
+            (int) $sub['nilai'],
+            'Angka di kartu pilar HARUS sama dengan jumlah baris daftar bottleneck'
+        );
+    }
+
+    public function test_beberapa_revisi_pada_project_sama_dikelompokkan_jadi_satu_item(): void
+    {
+        $kepala  = $this->kepalaDivisi('Editing');
+        $project = $this->buatProject(Project::STATUS_REVISION, [$kepala->id]);
+
+        foreach (['Perbaiki transisi', 'Perbaiki audio', 'Perbaiki warna'] as $catatan) {
+            \App\Models\ProjectRevision::create([
+                'project_id' => $project->id,
+                'user_id'    => $kepala->id,
+                'type'       => 'revision',
+                'note'       => $catatan,
+            ]);
+        }
+
+        $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
+
+        $itemRevisi = collect($hasil['bottleneck'])
+            ->where('jenis', 'revisi')
+            ->where('project_id', $project->id);
+
+        $this->assertCount(1, $itemRevisi, 'Revisi pada project yang sama harus jadi SATU baris, bukan diulang');
+        $this->assertStringContainsString('3', $itemRevisi->first()['label']);
+    }
+
+    public function test_project_review_tanpa_penanda_waktu_pakai_perkiraan_yang_ditandai_jujur(): void
+    {
+        $kepala  = $this->kepalaDivisi('Broadcast');
+        $project = $this->buatProject(Project::STATUS_REVIEW, [$kepala->id]);
+
+        // Data lama: tidak ada penanda waktu masuk Review
+        $project->forceFill(['review_requested_at' => null, 'updated_at' => Carbon::now()->subDays(4)])->save();
+
+        $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
+        $item  = collect($hasil['bottleneck'])->firstWhere('project_id', $project->id);
+
+        $this->assertNotNull($item);
+        $this->assertNotNull($item['hari'], 'Lama menunggu tidak boleh kosong kalau bisa diperkirakan');
+        $this->assertTrue($item['perkiraan'] ?? false, 'Nilai perkiraan WAJIB ditandai supaya tidak dikira angka pasti');
+    }
+
+    public function test_project_tanpa_anggota_dilaporkan_bukan_dihapus_diam_diam(): void
+    {
+        // Project tanpa anggota tidak bisa dipetakan ke divisi mana pun.
+        // Kalau dibiarkan diam-diam, Pembina tidak tahu ada project "nyasar".
+        Project::create([
+            'name'       => 'Project Tanpa Anggota ' . uniqid(),
+            'start_date' => Carbon::today()->toDateString(),
+            'deadline'   => Carbon::today()->addDays(3)->toDateString(),
+            'status'     => Project::STATUS_ON_PROGRESS,
+        ]);
+
+        $hasil = $this->evaluasiSekarang($this->layanan()->dataset());
+
+        $this->assertGreaterThanOrEqual(
+            1,
+            $hasil['ringkasan']['project_tanpa_anggota'] ?? 0,
+            'Project tanpa anggota harus dihitung & dilaporkan'
+        );
+    }
+
+    public function test_tampilan_target_tidak_dobel(): void
+    {
+        // Perlu ada data di periode supaya kartu pilar menampilkan rincian sub-metrik
+        $kepala  = $this->kepalaDivisi('Lapangan');
+        $anggota = $this->anggotaDivisi('Lapangan');
+        $project = $this->buatProject(Project::STATUS_ON_PROGRESS, [$kepala->id, $anggota->id]);
+        $this->buatTask($project, $anggota->id, 'Pending', Carbon::today()->toDateString());
+
+        $res = $this->actingAs($this->pembina())->get('/kinerja-ketua-media');
+
+        $res->assertOk();
+        $res->assertSee('target:');
+        $this->assertStringNotContainsString(
+            '0 item / 0 item',
+            $res->getContent(),
+            'Tampilan target tidak boleh dobel (nilai / target yang sama)'
+        );
+    }
 }
