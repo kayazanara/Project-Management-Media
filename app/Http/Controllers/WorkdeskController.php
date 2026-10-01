@@ -34,7 +34,7 @@ class WorkdeskController extends Controller
             'stats' => $this->buildOverviewStats(),
             'actions' => $this->buildActionsForUser($user),
             'alerts' => $this->buildAlerts(),
-            'performance' => $this->buildDivisionPerformance(),
+            'performance' => $this->buildDivisionPerformance($days),
             'dailyTrend' => $this->buildDailyCompletionTrend($days),
             'filterDays' => $days,
             'topMembers' => $this->buildTopMembers(),
@@ -74,15 +74,22 @@ class WorkdeskController extends Controller
         ]);
     }
 
-    public function getPerformance()
+    public function getPerformance(Request $request)
     {
         $user = Auth::user();
         if (!$user->isManager()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
+        // ⚡ Periode mengikuti filter halaman, sama seperti tampilan utama
+        $days = (int) $request->input('days', 30);
+        if (!in_array($days, [7, 30, 90])) {
+            $days = 30;
+        }
+
         return response()->json([
-            'performance' => $this->buildDivisionPerformance(),
+            'performance' => $this->buildDivisionPerformance($days),
+            'periode_days' => $days,
             'timestamp' => now()->toDateTimeString(),
         ]);
     }
@@ -152,6 +159,22 @@ class WorkdeskController extends Controller
     // ============================================================
     // COLOR MAPPING
     // ============================================================
+
+    /**
+     * Penentu "task ini punya divisi ini atau bukan".
+     * Aturan sama dengan sistem poin: pakai KONTRIBUTOR; kalau task belum punya
+     * kontributor, pakai PIC (assigned_to).
+     */
+    private function pelakuTask(ProjectTask $task, array $memberIds): bool
+    {
+        $pelaku = $task->contributors->pluck('id')->map(fn ($i) => (int) $i)->all();
+
+        if ($pelaku === []) {
+            $pelaku = $task->assigned_to ? [(int) $task->assigned_to] : [];
+        }
+
+        return $pelaku !== [] && array_intersect($pelaku, $memberIds) !== [];
+    }
 
     private function getDivisionColors(): array
     {
@@ -393,210 +416,260 @@ class WorkdeskController extends Controller
     // PERFORMANCE
     // ============================================================
 
-    private function buildDivisionPerformance(): array
+    /**
+     * 📊 Performa Divisi — SATU basis periode untuk semua angka.
+     *
+     * ⚡ Diperbaiki 2 Okt 2026 (permintaan Zev: "terutama di bagian performa devisi").
+     * Yang salah sebelumnya:
+     *  1. Periode selalu minggu ini -> filter 7/30/90 hari tidak berpengaruh.
+     *  2. Pembanding tren tidak apple-to-apple: pembilang memakai gabungan
+     *     (task_date periode ini ATAU selesai periode ini), pembanding hanya
+     *     "selesai minggu lalu" -> bisa salah tanda.
+     *  3. Periode lalu 0 task -> ditulis 0%, padahal divisi baru naik dari nol.
+     *  4. Divisi tanpa task -> semua 0% (kelihatan buruk), padahal artinya
+     *     "tidak ada data" -> sekarang "—" (prinsip kejujuran data).
+     *  5. Bobot (weight) yang belum pernah diisi Pembina ikut menekan skor ->
+     *     sekarang indikator tanpa data dilewati dan bobotnya dibagi proporsional.
+     */
+    private function buildDivisionPerformance(int $days = 30): array
     {
         $divisions = $this->getDivisionColors();
-        $result = [];
 
-        $startOfWeek = now()->startOfWeek();
-        $endOfWeek = now()->endOfWeek();
-        $prevStart = now()->subWeek()->startOfWeek();
-        $prevEnd = now()->subWeek()->endOfWeek();
+        $mulai     = Carbon::now()->subDays($days - 1)->startOfDay();
+        $akhir     = Carbon::now()->endOfDay();
+        $mulaiLalu = $mulai->copy()->subDays($days)->startOfDay();
+        $akhirLalu = $mulai->copy()->subDay()->endOfDay();
 
-        foreach ($divisions as $divName => $meta) {
-            // ⚡ FIX: hanya anggota berstatus Aktif (sebelumnya semua status ikut dihitung,
-            // beda dengan halaman Monitoring yang sudah memfilter Aktif).
-            $memberIds = User::where('division', 'like', "%{$divName}%")
-                ->where('status', 'Aktif')
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->all();
-
-            if (empty($memberIds)) {
-                $result[] = [
-                    'name' => $divName,
-                    'label' => $meta['label'],
-                    'hex' => $meta['hex'],
-                    'completion_rate' => 0,
-                    'on_time_rate' => 0,
-                    'performance_score' => 0,
-                    'total_tasks' => 0,
-                    'completed_tasks' => 0,
-                    'completed_projects' => 0,
-                    'trend' => 0,
-                ];
+        // 1) anggota AKTIF per divisi — satu query untuk semua divisi
+        $anggotaDivisi = [];
+        foreach (User::where('status', 'Aktif')->get(['id', 'division']) as $u) {
+            if (! $u->division) {
                 continue;
             }
-
-            // ⚡ FIX: atribusi kerja disamakan dengan sistem poin —
-            // pakai KONTRIBUTOR; kalau task belum punya kontributor, pakai PIC (assigned_to).
-            // Sebelumnya hanya assigned_to, sehingga bisa beda dengan Top Members.
-            $weekTasks = ProjectTask::where(function ($q) use ($memberIds) {
-                    $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
-                      ->orWhere(function ($q2) use ($memberIds) {
-                          $q2->whereDoesntHave('contributors')
-                             ->whereIn('assigned_to', $memberIds);
-                      });
-                })
-                // ⚡ FIX: SATU basis periode untuk pembilang & penyebut
-                // (sebelumnya total pakai task_date OR completed_at, tapi pembilang hanya completed_at)
-                ->where(function ($q) use ($startOfWeek, $endOfWeek) {
-                    $q->whereBetween('task_date', [$startOfWeek->toDateString(), $endOfWeek->toDateString()])
-                      ->orWhere(function ($q2) use ($startOfWeek, $endOfWeek) {
-                          $q2->where('status', 'Completed')
-                             ->whereBetween('completed_at', [$startOfWeek, $endOfWeek]);
-                      });
-                })
-                ->get();
-
-            $totalTasks     = $weekTasks->count();
-            $completedTasks = $weekTasks->where('status', 'Completed')->count();
-
-            // ⚡ FIX: on-time dibandingkan per TANGGAL.
-            // Sebelumnya whereColumn('completed_at','<=','task_date') membandingkan
-            // datetime dengan date sehingga hasilnya SELALU 0% (semua dianggap telat).
-            $onTimeTasks = $weekTasks->filter(function ($t) {
-                if ($t->status !== 'Completed' || !$t->task_date || !$t->completed_at) {
-                    return false;
+            foreach ($divisions as $nama => $meta) {
+                if (stripos($u->division, $nama) !== false) {
+                    $anggotaDivisi[$nama][] = (int) $u->id;
                 }
+            }
+        }
 
-                return $t->completed_at->toDateString() <= $t->task_date->toDateString();
+        // 2) task yang relevan: dijadwalkan/selesai periode ini, atau selesai periode lalu
+        $tugas = ProjectTask::where(function ($q) use ($mulai, $akhir, $mulaiLalu, $akhirLalu) {
+                $q->whereBetween('task_date', [$mulai->toDateString(), $akhir->toDateString()])
+                  ->orWhereBetween('completed_at', [$mulai, $akhir])
+                  ->orWhereBetween('completed_at', [$mulaiLalu, $akhirLalu]);
+            })
+            ->with('contributors:id')
+            ->get(['id', 'assigned_to', 'task_date', 'status', 'completed_at', 'weight']);
+
+        // 3) project yang tuntas pada periode ini (untuk info tambahan)
+        $projectTuntas = Project::where('status', Project::STATUS_COMPLETED)
+            ->whereBetween('completed_at', [$mulai, $akhir])
+            ->with('users:id')
+            ->get(['id', 'completed_at']);
+
+        $result = [];
+
+        foreach ($divisions as $divName => $meta) {
+            $ids = $anggotaDivisi[$divName] ?? [];
+
+            $milikDivisi = $ids === []
+                ? collect()
+                : $tugas->filter(fn ($t) => $this->pelakuTask($t, $ids));
+
+            // ✅ SATU basis periode: task yang DIJADWALKAN periode ini atau SELESAI periode ini
+            $periode = $milikDivisi->filter(function ($t) use ($mulai, $akhir) {
+                $dijadwalkan = $t->task_date && $t->task_date->between($mulai, $akhir);
+                $selesaiDi   = $t->completed_at && $t->completed_at->between($mulai, $akhir);
+
+                return $dijadwalkan || $selesaiDi;
+            });
+
+            // ✅ pembilang: hanya yang BENAR-BENAR selesai DI DALAM periode ini
+            $selesai = $periode->filter(fn ($t) => $t->status === 'Completed'
+                && $t->completed_at
+                && $t->completed_at->between($mulai, $akhir));
+
+            // ✅ pembanding tren: panjang periode SAMA, satu basis yang sama
+            $selesaiLalu = $milikDivisi->filter(fn ($t) => $t->status === 'Completed'
+                && $t->completed_at
+                && $t->completed_at->between($mulaiLalu, $akhirLalu))->count();
+
+            $totalTasks     = $periode->count();
+            $completedTasks = $selesai->count();
+
+            // tepat waktu dibandingkan per TANGGAL (datetime vs date pernah bikin 0% selamanya)
+            $tepatWaktu = $selesai->filter(fn ($t) => $t->task_date
+                && $t->completed_at->toDateString() <= $t->task_date->toDateString())->count();
+
+            $bobotPeriode  = (int) $periode->sum('weight');
+            $bobotSelesai  = (int) $selesai->sum('weight');
+
+            // null = tidak ada data (ditampilkan "—"), bukan 0
+            $completionRate = $totalTasks > 0
+                ? (int) min(100, round(($completedTasks / $totalTasks) * 100))
+                : null;
+            $onTimeRate = $completedTasks > 0
+                ? (int) min(100, round(($tepatWaktu / $completedTasks) * 100))
+                : null;
+            $weightedRate = $bobotPeriode > 0
+                ? (int) min(100, round(($bobotSelesai / $bobotPeriode) * 100))
+                : null;
+
+            // ✅ skor: rata-rata dari indikator yang ADA datanya
+            // (bobot dikembalikan proporsional -> 40/40, 40/40/20, dst.)
+            $indikator = [];
+            if ($completionRate !== null) { $indikator[] = [$completionRate, 40]; }
+            if ($onTimeRate !== null)     { $indikator[] = [$onTimeRate, 40]; }
+            if ($weightedRate !== null)   { $indikator[] = [$weightedRate, 20]; }
+
+            $bobotIndikator = array_sum(array_column($indikator, 1));
+            $performanceScore = ($indikator === [] || $bobotIndikator === 0)
+                ? null
+                : (int) round(array_sum(array_map(fn ($i) => $i[0] * $i[1], $indikator)) / $bobotIndikator);
+
+            // ✅ tren: naik dari nol ditulis "baru", bukan 0%
+            $trend     = null;
+            $trendTeks = '—';
+
+            if ($selesaiLalu > 0) {
+                $trend     = (int) round((($completedTasks - $selesaiLalu) / $selesaiLalu) * 100);
+                $trendTeks = ($trend > 0 ? '+' : '') . $trend . '%';
+            } elseif ($completedTasks > 0) {
+                $trendTeks = 'baru';
+            }
+
+            $selesaiId = $ids;
+            $completedProjects = $projectTuntas->filter(function ($p) use ($selesaiId) {
+                return $p->users->pluck('id')->map(fn ($i) => (int) $i)->intersect($selesaiId)->isNotEmpty();
             })->count();
 
-            $weightedTotal = (int) $weekTasks->sum('weight');
-            $weightedDone  = (int) $weekTasks->where('status', 'Completed')->sum('weight');
-
-            $completedProjects = Project::whereHas('users', function ($q) use ($memberIds) {
-                $q->whereIn('users.id', $memberIds);
-            })
-                ->where('status', Project::STATUS_COMPLETED)
-                ->whereBetween('completed_at', [$startOfWeek, $endOfWeek])
-                ->count();
-
-            $completionRate = $totalTasks > 0
-                ? min(100, round(($completedTasks / $totalTasks) * 100))
-                : 0;
-            $onTimeRate = $completedTasks > 0
-                ? min(100, round(($onTimeTasks / $completedTasks) * 100))
-                : 0;
-            $weightedRate = $weightedTotal > 0
-                ? min(100, round(($weightedDone / $weightedTotal) * 100))
-                : 0;
-
-            $performanceScore = round(
-                ($completionRate * 0.4) + ($onTimeRate * 0.4) + ($weightedRate * 0.2)
-            );
-
-            // ⚡ FIX: atribusi sama (kontributor, fallback PIC) supaya tren minggu lalu sebanding
-            $prevCompleted = ProjectTask::where(function ($q) use ($memberIds) {
-                    $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
-                      ->orWhere(function ($q2) use ($memberIds) {
-                          $q2->whereDoesntHave('contributors')
-                             ->whereIn('assigned_to', $memberIds);
-                      });
-                })
-                ->where('status', 'Completed')
-                ->whereBetween('completed_at', [$prevStart, $prevEnd])
-                ->count();
-
-            $trend = $prevCompleted > 0
-                ? round((($completedTasks - $prevCompleted) / $prevCompleted) * 100)
-                : 0;
-
             $result[] = [
-                'name' => $divName,
-                'label' => $meta['label'],
-                'hex' => $meta['hex'],
-                'completion_rate' => $completionRate,
-                'on_time_rate' => $onTimeRate,
-                'performance_score' => $performanceScore,
-                'total_tasks' => $totalTasks,
-                'completed_tasks' => $completedTasks,
-                'completed_projects' => $completedProjects,
-                'trend' => $trend,
+                'name'                => $divName,
+                'label'               => $meta['label'],
+                'hex'                 => $meta['hex'],
+                'completion_rate'     => $completionRate,
+                'on_time_rate'        => $onTimeRate,
+                'weighted_rate'       => $weightedRate,
+                'performance_score'   => $performanceScore,
+                'skor_teks'           => $performanceScore === null ? '—' : $performanceScore . '%',
+                'total_tasks'         => $totalTasks,
+                'completed_tasks'     => $completedTasks,
+                'completed_prev'      => $selesaiLalu,
+                'completed_projects'  => $completedProjects,
+                'trend'               => $trend,
+                'trend_teks'          => $trendTeks,
+                'periode_teks'        => $mulai->isoFormat('D MMM') . ' – ' . $akhir->isoFormat('D MMM Y'),
             ];
         }
 
         return $result;
     }
 
+    /**
+     * 📊 Tren harian: JUMLAH task selesai PER HARI untuk tiap divisi.
+     *
+     * ⚡ Diperbaiki 2 Okt 2026 (permintaan Zev: "trend itu perhitungannya bisa
+     * diperbaiki"). Versi lama rumusnya KUMULATIF:
+     *     (task selesai sampai tanggal itu) / (total task selesai periode) x 100
+     * sehingga grafiknya selalu naik 0 -> 100%, hari terakhir SELALU 100%, dan
+     * tidak pernah turun walau hari itu tidak ada task selesai — menyesatkan.
+     * Sekarang: jumlah task selesai HARI ITU saja, jadi naik-turunnya kelihatan.
+     *
+     * Bonus efisiensi: dulu 1 query COUNT per divisi per hari
+     * (4 divisi x 90 hari = 360 query tiap halaman dibuka). Sekarang cukup
+     * 1 query anggota + 1 query task (+1 query kontributor) untuk semua titik.
+     */
     private function buildDailyCompletionTrend(int $days = 30): array
     {
         $divisions = $this->getDivisionColors();
-        $end = now();
-        $start = $end->copy()->subDays($days - 1);
 
+        $end   = Carbon::now()->endOfDay();
+        $start = Carbon::now()->subDays($days - 1)->startOfDay();
+
+        // 1) daftar tanggal (sumbu X)
         $dates = [];
         $current = $start->copy();
-        while ($current <= $end) {
-            $dates[] = $current->format('Y-m-d');
+        while ($current->lte($end)) {
+            $dates[] = $current->toDateString();
             $current->addDay();
         }
 
-        $result = [
-            'labels' => array_map(fn($d) => Carbon::parse($d)->format('d M'), $dates),
-            'datasets' => [],
-            'days' => $days,
-        ];
+        // 2) anggota AKTIF per divisi — satu query untuk semua divisi
+        $anggotaDivisi = [];
+        foreach (User::where('status', 'Aktif')->get(['id', 'division']) as $u) {
+            if (! $u->division) {
+                continue;
+            }
+            foreach ($divisions as $nama => $meta) {
+                if (stripos($u->division, $nama) !== false) {
+                    $anggotaDivisi[$nama][] = (int) $u->id;
+                }
+            }
+        }
 
-        foreach ($divisions as $divName => $meta) {
-            // ⚡ FIX: hanya anggota berstatus Aktif (konsisten dengan performa divisi & Monitoring)
-            $memberIds = User::where('division', 'like', "%{$divName}%")
-                ->where('status', 'Aktif')
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->all();
+        // 3) semua task yang SELESAI pada periode ini — satu query
+        $tugas = ProjectTask::where('status', 'Completed')
+            ->whereBetween('completed_at', [$start, $end])
+            ->with('contributors:id')
+            ->get(['id', 'assigned_to', 'completed_at']);
 
-            if (empty($memberIds)) {
-                $result['datasets'][] = [
-                    'label' => $meta['label'],
-                    'hex' => $meta['hex'],
-                    'data' => array_fill(0, count($dates), 0),
-                ];
+        // 4) hitungkan per divisi per hari
+        $perDivisi = [];
+        foreach ($divisions as $nama => $meta) {
+            $perDivisi[$nama] = array_fill_keys($dates, 0);
+        }
+
+        $totalSemua = 0;
+
+        foreach ($tugas as $t) {
+            if (! $t->completed_at) {
                 continue;
             }
 
-            // ⚡ FIX (B3): penyebut memakai task yang SELESAI di rentang periode ini
-            // (sebelumnya total SEMUA task selamanya -> persentase tren harian menyesatkan).
-            $totalTasks = ProjectTask::where('status', 'Completed')
-                ->whereBetween('completed_at', [$start, $end])
-                ->where(function ($q) use ($memberIds) {
-                    $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
-                      ->orWhere(function ($q2) use ($memberIds) {
-                          $q2->whereDoesntHave('contributors')
-                             ->whereIn('assigned_to', $memberIds);
-                      });
-                })->count();
-
-            $data = [];
-            foreach ($dates as $date) {
-                if ($totalTasks == 0) {
-                    $data[] = 0;
-                    continue;
-                }
-
-                $completed = ProjectTask::where(function ($q) use ($memberIds) {
-                        $q->whereHas('contributors', fn ($c) => $c->whereIn('users.id', $memberIds))
-                          ->orWhere(function ($q2) use ($memberIds) {
-                              $q2->whereDoesntHave('contributors')
-                                 ->whereIn('assigned_to', $memberIds);
-                          });
-                    })
-                    ->where('status', 'Completed')
-                    ->whereDate('completed_at', '<=', $date)
-                    ->count();
-
-                $data[] = round(($completed / $totalTasks) * 100, 1);
+            $hari = $t->completed_at->toDateString();
+            if (! array_key_exists($hari, $perDivisi[array_key_first($perDivisi)] ?? [])) {
+                continue; // di luar rentang (pengaman)
             }
 
-            $result['datasets'][] = [
+            $totalSemua++;
+
+            // Atribusi kerja disamakan dengan sistem poin: pakai KONTRIBUTOR,
+            // kalau task belum punya kontributor pakai PIC (assigned_to).
+            $pelaku = $t->contributors->pluck('id')->map(fn ($i) => (int) $i)->all();
+            if ($pelaku === []) {
+                $pelaku = $t->assigned_to ? [(int) $t->assigned_to] : [];
+            }
+            if ($pelaku === []) {
+                continue;
+            }
+
+            foreach ($divisions as $nama => $meta) {
+                if (array_intersect($pelaku, $anggotaDivisi[$nama] ?? []) !== []) {
+                    $perDivisi[$nama][$hari]++;
+                }
+            }
+        }
+
+        $datasets = [];
+        foreach ($divisions as $nama => $meta) {
+            $data = array_values($perDivisi[$nama]);
+
+            $datasets[] = [
                 'label' => $meta['label'],
-                'hex' => $meta['hex'],
-                'data' => $data,
+                'hex'   => $meta['hex'],
+                'data'  => $data,
+                'total' => array_sum($data),
             ];
         }
 
-        return $result;
+        return [
+            'labels'   => array_map(fn ($d) => Carbon::parse($d)->format('d M'), $dates),
+            'datasets' => $datasets,
+            'days'     => $days,
+            'total'    => $totalSemua,
+            'satuan'   => 'task selesai per hari',
+        ];
     }
 
     // ============================================================

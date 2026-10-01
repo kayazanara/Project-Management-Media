@@ -201,7 +201,10 @@
                     <div class="row">
                         <div class="col-lg-5 mb-4">
                             <h6 class="text-center text-muted small mb-3">
-                                <i class="fas fa-medal mr-1"></i> Performance Score (Pekan Ini)
+                                <i class="fas fa-medal mr-1"></i> Performance Score ({{ $filterDays }} Hari)
+                                @if(!empty($performance[0]['periode_teks']))
+                                    <span class="badge badge-light border ml-1">{{ $performance[0]['periode_teks'] }}</span>
+                                @endif
                             </h6>
                             <div style="position: relative; height: 280px;">
                                 <canvas id="horizontalBarChart"></canvas>
@@ -210,7 +213,10 @@
 
                         <div class="col-lg-7 mb-4">
                             <h6 class="text-center text-muted small mb-3">
-                                <i class="fas fa-chart-line mr-1"></i> Completion Rate Harian ({{ $filterDays }} Hari)
+                                <i class="fas fa-chart-bar mr-1"></i> Task Selesai per Hari ({{ $filterDays }} Hari)
+                                @if(isset($dailyTrend['total']))
+                                    <span class="badge badge-light border ml-1">{{ $dailyTrend['total'] }} task</span>
+                                @endif
                             </h6>
                             <div style="position: relative; height: 280px;">
                                 <canvas id="dailyTrendChart"></canvas>
@@ -234,6 +240,7 @@
                                     <th class="text-center">Task</th>
                                     <th class="text-center">Completion</th>
                                     <th class="text-center">On-Time</th>
+                                    <th class="text-center">Bobot</th>
                                     <th class="text-center">Performance</th>
                                     <th class="text-center">Trend</th>
                                 </tr>
@@ -246,20 +253,32 @@
                                             <strong>{{ $div['label'] }}</strong>
                                         </td>
                                         <td class="text-center">{{ $div['completed_tasks'] }}/{{ $div['total_tasks'] }}</td>
-                                        <td class="text-center">{{ $div['completion_rate'] }}%</td>
-                                        <td class="text-center">{{ $div['on_time_rate'] }}%</td>
+                                        {{-- ⚡ "—" = belum ada data pada periode ini (bukan 0%, biar tidak terkesan jelek) --}}
+                                        <td class="text-center">{!! $div['completion_rate'] === null ? '<span class="text-muted">—</span>' : $div['completion_rate'] . '%' !!}</td>
+                                        <td class="text-center">{!! $div['on_time_rate'] === null ? '<span class="text-muted">—</span>' : $div['on_time_rate'] . '%' !!}</td>
+                                        <td class="text-center">{!! $div['weighted_rate'] === null ? '<span class="text-muted" title="Bobot task belum diisi">—</span>' : $div['weighted_rate'] . '%' !!}</td>
                                         <td class="text-center">
-                                            <span class="badge" style="background-color: {{ $div['hex'] }}; color: #fff;">
-                                                {{ $div['performance_score'] }}%
-                                            </span>
+                                            @if($div['performance_score'] === null)
+                                                <span class="text-muted" title="Belum ada task pada periode ini">—</span>
+                                            @else
+                                                <span class="badge" style="background-color: {{ $div['hex'] }}; color: #fff;">
+                                                    {{ $div['performance_score'] }}%
+                                                </span>
+                                            @endif
                                         </td>
                                         <td class="text-center">
-                                            @if($div['trend'] > 0)
+                                            @if($div['trend_teks'] === 'baru')
+                                                <span class="text-primary small font-weight-bold" title="Periode sebelumnya belum ada task selesai">
+                                                    <i class="fas fa-star mr-1"></i>baru
+                                                </span>
+                                            @elseif($div['trend'] > 0)
                                                 <span class="text-success small"><i class="fas fa-arrow-up mr-1"></i>+{{ $div['trend'] }}%</span>
                                             @elseif($div['trend'] < 0)
                                                 <span class="text-danger small"><i class="fas fa-arrow-down mr-1"></i>{{ $div['trend'] }}%</span>
-                                            @else
+                                            @elseif($div['trend'] === 0)
                                                 <span class="text-muted small"><i class="fas fa-minus mr-1"></i>0%</span>
+                                            @else
+                                                <span class="text-muted small" title="Tidak ada pembanding">—</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -588,7 +607,15 @@
                     legend: { display: false },
                     tooltips: {
                         backgroundColor: 'rgba(0,0,0,0.8)',
-                        callbacks: { label: function(item) { return item.xLabel + '%'; } }
+                        callbacks: {
+                            label: function(item) {
+                                const d = performanceData[item.index] || {};
+                                if (d.performance_score === null) {
+                                    return 'Belum ada task pada periode ini';
+                                }
+                                return 'Skor ' + d.performance_score + '% (' + d.completed_tasks + '/' + d.total_tasks + ' task selesai)';
+                            }
+                        }
                     },
                     scales: {
                         xAxes: [{
@@ -601,25 +628,22 @@
             });
         }
 
+        // 📊 Tren harian = JUMLAH task selesai per hari (bukan persentase kumulatif).
+        // Versi lama memakai type: 'line' dengan satuan persen dan selalu naik 0->100%.
         const lineCtx = document.getElementById('dailyTrendChart');
         if (lineCtx) {
             new Chart(lineCtx, {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: dailyTrendData.labels,
                     datasets: dailyTrendData.datasets.map(d => ({
                         label: d.label,
                         data: d.data,
+                        backgroundColor: d.hex + 'cc',
+                        hoverBackgroundColor: d.hex,
                         borderColor: d.hex,
-                        backgroundColor: d.hex + '20',
-                        borderWidth: 2.5,
-                        pointRadius: 0,
-                        pointHoverRadius: 5,
-                        pointBackgroundColor: d.hex,
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        lineTension: 0.3,
-                        fill: false,
+                        borderWidth: 1,
+                        maxBarThickness: 26,
                     }))
                 },
                 options: {
@@ -627,19 +651,26 @@
                     maintainAspectRatio: false,
                     legend: {
                         position: 'top',
-                        labels: { font: { size: 11, weight: '600' }, padding: 12, usePointStyle: true, pointStyle: 'circle' }
+                        labels: { font: { size: 11, weight: '600' }, padding: 12, usePointStyle: true, pointStyle: 'rectRounded' }
                     },
                     tooltips: {
                         mode: 'index', intersect: false,
                         backgroundColor: 'rgba(255,255,255,0.98)',
                         titleFontColor: '#1a1a2e', bodyFontColor: '#4a5568',
                         borderColor: '#e5e9f2', borderWidth: 1,
-                        callbacks: { label: (item, data) => data.datasets[item.datasetIndex].label + ': ' + item.yLabel + '%' }
+                        callbacks: {
+                            label: (item, data) => data.datasets[item.datasetIndex].label + ': ' + item.yLabel + ' task'
+                        }
                     },
                     scales: {
-                        xAxes: [{ gridLines: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10, weight: '600' }, autoSkip: true } }],
+                        xAxes: [{
+                            stacked: false,
+                            gridLines: { display: false },
+                            ticks: { maxTicksLimit: 12, font: { size: 10, weight: '600' }, autoSkip: true }
+                        }],
                         yAxes: [{
-                            ticks: { beginAtZero: true, max: 100, callback: v => v + '%', font: { size: 10, weight: '600' }, padding: 8 },
+                            stacked: false,
+                            ticks: { beginAtZero: true, precision: 0, font: { size: 10, weight: '600' }, padding: 8 },
                             gridLines: { color: 'rgba(234, 236, 244, 0.5)', drawBorder: false, borderDash: [4, 4] }
                         }]
                     }
