@@ -1,126 +1,122 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Project Media — Sistem Manajemen Project Tim Media Hubbulkhoir
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplikasi internal untuk mengatur **project, task, rapat, konten, dan kinerja** tim media
+Hubbulkhoir. Dipakai Pembina Media, Ketua Media, Kepala Divisi, dan Anggota.
 
-## About Laravel
+> 📚 **Mau revisi / menambah fitur?** Baca dulu:
+> [docs/ARSITEKTUR.md](docs/ARSITEKTUR.md) → [docs/FITUR.md](docs/FITUR.md) →
+> [docs/PANDUAN-REVISI.md](docs/PANDUAN-REVISI.md). Jebakan-jebakan yang pernah
+> bikin bug ada di [docs/CATATAN-PERBAIKAN.md](docs/CATATAN-PERBAIKAN.md).
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 1. Teknologi
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+| Bagian | Dipakai |
+|---|---|
+| Framework | Laravel 11 (PHP 8.3) |
+| Database | SQLite (`database/project_media.sqlite`) |
+| Tampilan | Blade + tema SB Admin 2 (Bootstrap 4) + Chart.js |
+| Notifikasi | WhatsApp lewat **WAHA** (`WAHA_URL`, default `http://localhost:3000`) |
+| Uji | PHPUnit (`php artisan test`), DB uji di memori |
 
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## 2. Jalan di laptop (Laragon)
 
 ```bash
-composer require laravel/boost --dev
+cd C:/laragon/www/project-media
 
-php artisan boost:install
+# 1. kalau baru clone
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+
+# 2. akun contoh untuk uji (JANGAN di server produksi)
+php artisan db:seed --class=TestAccountSeeder
+
+# 3. jalankan
+php artisan serve --port=8123
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Buka `http://127.0.0.1:8123`. **Perhatikan port**: kalau port 8000 sedang dipakai
+aplikasi lain, gunakan `--port=8123`.
 
-## Contributing
+**Akun uji** (semua password `password`):
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+| Email | Peran |
+|---|---|
+| `pembina@test.com` | Pembina Media |
+| `ketua@test.com` | Ketua Media |
+| `kepala.lapangan@test.com`, `kepala.editing@test.com`, `kepala.broadcast@test.com`, `kepala.ai@test.com` | Kepala Divisi |
+| `anggota.lapangan1@test.com`, `anggota.editing1@test.com`, `anggota.broadcast1@test.com`, `anggota.ai1@test.com` | Anggota |
 
-## Code of Conduct
+## 3. Deploy ke server
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+cd /home/maskhoir/project-media
+php artisan db:backup          # WAJIB sebelum tarik perubahan
+git pull origin main
+php artisan migrate            # WAJIB kalau ada migrasi baru (cek pesan commit)
+php artisan config:clear && php artisan view:clear
+php artisan test               # harus semua lulus sebelum dibuka ke pengguna
+composer dump-autoload         # kalau ada file job/listener baru atau dihapus
+```
 
-## Security Vulnerabilities
+Tekan **Ctrl+Shift+R** di browser sesudahnya (file CSS/JS lama sering tersimpan di cache).
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## 4. Perintah penting
 
-## License
+| Perintah | Kegunaan |
+|---|---|
+| `php artisan db:backup` | Backup DB (aman walau aplikasi sedang dipakai) |
+| `php artisan reminders:send` | Kirim reminder WhatsApp H-3, H-1, dan lewat deadline (otomatis tiap hari 08:00) |
+| `php artisan login:hitung-ulang-streak` | Hitung ulang streak login dari riwayat (opsi `--user=email`) |
+| `php artisan login:reset-reward tes.animasi@test.com` | Untuk uji: hapus bonus login hari ini supaya animasi bisa dilihat lagi |
+| `php artisan simulate:workflow` | Simulasi 9 tahap workflow (dry-run, otomatis dibatalkan) |
+| `php artisan test` | Jalankan semua tes |
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Backup tersimpan di `database/backups/`. **Jangan pernah** commit file `.sqlite`,
+`.env`, atau folder backup.
 
-# 📂 Sistem Manajemen Proyek & Media - PP Hubbul Khoir Sukoharjo
+## 5. Peta folder
 
-Sistem informasi berbasis web yang dikembangkan menggunakan **Laravel 13** dan **SQLite** untuk mengelola proyek media, penugasan anggota tim (*Ustadz* dan *Santri*), serta inventaris di lingkungan pondok pesantren.
+```
+app/
+  Console/Commands/     perintah artisan (backup, reminder, streak, simulasi)
+  Http/Controllers/     semua pengendali halaman & aksi
+  Http/Middleware/      CheckDivisionAccess (hak akses per peran)
+  Models/               Project, ProjectTask, User, Content, Meeting, ...
+  Services/             aturan bisnis: ProjectWorkflowService, WhatsappNotifier,
+                        KetuaMediaPerformance, DailyLoginReward
+  Jobs/, Listeners/     pengiriman notifikasi antrean
+resources/views/
+  layouts/app.blade.php layout utama (sidebar, topbar, mode gelap)
+  partials/tema.blade.php switch mode gelap/terang
+  <fitur>/index.blade.php halaman tiap fitur
+public/css/tema-gelap.css  seluruh aturan mode gelap
+docs/                   dokumentasi (lihat daftar di bawah)
+tests/Feature/          tes per fitur (190 tes)
+```
 
----
+## 6. Daftar dokumentasi
 
-## 🛠️ Stack Teknologi & Lingkungan
-* **Framework:** Laravel 13
-* **Database:** SQLite
-* **Frontend Template:** SB Admin 2 (Bootstrap 4)
-* **PHP Version:** 8.3+
+| Berkas | Isi |
+|---|---|
+| [docs/ARSITEKTUR.md](docs/ARSITEKTUR.md) | Alur request, peran & hak akses, alur 9 tahap project, di mana aturan bisnis disimpan |
+| [docs/FITUR.md](docs/FITUR.md) | Katalog fitur + file kunci + aturan pentingnya |
+| [docs/DATABASE.md](docs/DATABASE.md) | Semua tabel & kolom, relasi, catatan kolom khusus |
+| [docs/NOTIFIKASI-WA.md](docs/NOTIFIKASI-WA.md) | Siapa menerima notifikasi apa, aturan anti-dobel, cara uji |
+| [docs/PANDUAN-REVISI.md](docs/PANDUAN-REVISI.md) | Resep menambah menu/halaman/kolom/notifikasi + checklist sebelum deploy |
+| [docs/TES.md](docs/TES.md) | Daftar tes & cara menjalankannya |
+| [docs/CATATAN-PERBAIKAN.md](docs/CATATAN-PERBAIKAN.md) | Riwayat bug, penyebab, dan perbaikannya (jangan sampai terulang) |
 
----
+## 7. Kalau ada masalah
 
-## 📁 Struktur Direktori & File Utama yang Telah Dibuat
-
-### 1. Database & Migrations (`database/migrations/`)
-* `create_users_table.php`: Tabel pengguna dengan opsi role `Ustadz` dan `Santri`, serta divisi media.
-* `create_projects_table.php`: Tabel proyek (nama, tanggal mulai, deadline, status, link referensi, brief).
-* `create_project_user_table.php`: Tabel *pivot* untuk relasi *Many-to-Many* antara proyek dan anggota tim.
-
-### 2. Models (`app/Models/`)
-* **`User.php`**: 
-  * Memiliki relasi *Many-to-Many* ke `Project` (`projects()`).
-* **`Project.php`**: 
-  * Menggunakan `$guarded = ['id']`.
-  * Memiliki relasi *Many-to-Many* ke `User` (`users()`).
-
-### 3. Controllers (`app/Http/Controllers/`)
-* **`TeamController.php`**: Mengatur CRUD data anggota tim (Tambah, Lihat, Edit, Hapus) dengan validasi input dan pengecekan role/divisi.
-* **`ProjectController.php`**: Mengatur CRUD data proyek media:
-  * `index()`: Menampilkan daftar proyek beserta relasi user yang terlibat.
-  * `create()` & `store()`: Menangani form tambah proyek dengan multi-user (checkbox) dan status default `Planning`.
-  * `edit()` & `update()`: Menangani form edit proyek dan sinkronisasi anggota tim (status proyek dikunci/tidak bisa diubah manual agar sinkron dengan monitoring divisi).
-  * `destroy()`: Menghapus proyek beserta pembersihan data di tabel pivot.
-
-### 4. Views (`resources/views/`)
-* `layouts/app.blade.php`: Kerangka utama layout admin (SB Admin 2) beserta navigasi sidebar.
-* `team/`: Berisi file `index.blade.php`, `create.blade.php`, dan `edit.blade.php` untuk manajemen tim.
-* `projects/`: Berisi file `index.blade.php`, `create.blade.php`, dan `edit.blade.php` untuk manajemen proyek.
-
----
-
-## 🌐 Daftar Rute Web (`routes/web.php`)
-
-Semua rute di bawah dilindungi oleh middleware autentikasi (`auth`):
-* **Team Management:**
-  * `GET /team` ➔ `TeamController@index` (`team.index`)
-  * `GET /team/create` ➔ `TeamController@create` (`team.create`)
-  * `POST /team` ➔ `TeamController@store` (`team.store`)
-  * `GET /team/{id}/edit` ➔ `TeamController@edit` (`team.edit`)
-  * `PUT /team/{id}` ➔ `TeamController@update` (`team.update`)
-  * `DELETE /team/{id}` ➔ `TeamController@destroy` (`team.destroy`)
-
-* **Project Management:**
-  * `GET /projects` ➔ `ProjectController@index` (`projects.index`)
-  * `GET /projects/create` ➔ `ProjectController@create` (`projects.create`)
-  * `POST /projects` ➔ `ProjectController@store` (`projects.store`)
-  * `GET /projects/{id}/edit` ➔ `ProjectController@edit` (`projects.edit`)
-  * `PUT /projects/{id}` ➔ `ProjectController@update` (`projects.update`)
-  * `DELETE /projects/{id}` ➔ `ProjectController@destroy` (`projects.destroy`)
-
----
-
-## 🚀 Roadmap & Fitur Selanjutnya
-* [ ] **Modul Stock Management:** Inventaris peralatan media (Kamera, Tripod, Mic, Lighting, dll.).
-* [ ] **Modul Monitoring Divisi & Auto-Update Status:** Mengubah status proyek secara otomatis berdasarkan laporan dari masing-masing divisi/tim di lapangan.
+| Gejala | Cek dulu |
+|---|---|
+| Halaman error 500 sesudah pull | `php artisan migrate` sudah dijalankan? |
+| Tampilan tidak berubah | `php artisan view:clear` lalu Ctrl+Shift+R |
+| Tindakan terasa lama | Notifikasi WA memang dikirim setelah halaman pindah; kalau tetap berat, cek `WAHA_TIMEOUT` (default 5 detik) |
+| Notifikasi WA tidak terkirim | `WAHA_ENABLED` di `.env`, status WAHA, dan tabel `notification_logs` |
+| Mode gelap tidak muncul | Pastikan file `public/css/tema-gelap.css` ada dan ikon 🌙 di samping profil terlihat |
+| Angka aneh di laporan | Buka [docs/CATATAN-PERBAIKAN.md](docs/CATATAN-PERBAIKAN.md) — mungkin kasus yang sama pernah terjadi |
