@@ -27,11 +27,16 @@ class AuthController extends Controller
             $request->session()->regenerate();
             $request->session()->put('login_at', now()->toDateTimeString());
 
-            Auth::user()->trackDailyLogin();
-
-            // ⚡ FITUR BARU: bonus login harian = 2 poin, HANYA 1x per hari.
-            // Kalau hari ini sudah pernah dapat -> $reward = null (overlay pun tidak muncul).
+            // ⚡ PERBAIKAN BUG STREAK (2 Okt 2026): urutan dibalik.
+            // Bonus login diklaim LEBIH DULU, baru pencatatan login harian.
+            // Sebelumnya trackDailyLogin() menulis last_login_date = hari ini lebih
+            // dulu, sehingga pemeriksaan "login terakhir kemarin?" di claim() selalu
+            // gagal dan streak di-reset ke 1 setiap hari.
+            // (Sekarang claim() membaca riwayat, jadi urutan tidak lagi berpengaruh —
+            //  ini lapis kedua supaya tetap benar kalau nanti ada yang mengubahnya.)
             $reward = app(\App\Services\DailyLoginReward::class)->claim(Auth::user());
+
+            Auth::user()->trackDailyLogin();
 
             return redirect()->intended('/dashboard')
                 ->with('success', 'Berhasil login!')

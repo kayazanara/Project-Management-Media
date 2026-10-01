@@ -143,7 +143,22 @@ class DailyLoginRewardTest extends TestCase
 
     public function test_streak_naik_kalau_kemarin_login(): void
     {
+        // ⚡ Diperbarui 2 Okt 2026 saat membetulkan bug "streak stuck di 1".
+        // Bukti "kemarin login" sekarang diambil dari RIWAYAT KLAIM (login_rewards),
+        // bukan dari kolom users.last_login_date. Kolom itu terbukti tidak bisa
+        // dipercaya: AuthController menimpanya jadi HARI INI sebelum claim()
+        // memeriksa "apakah kemarin?" — akibatnya streak selalu jadi 1.
         $user = $this->anggota();
+
+        foreach ([4, 3, 2, 1] as $mundur) {
+            LoginReward::create([
+                'user_id'     => $user->id,
+                'reward_date' => now()->subDays($mundur)->toDateString(),
+                'points'      => 2,
+                'streak'      => 5 - $mundur,
+            ]);
+        }
+
         $user->forceFill([
             'login_streak'    => 4,
             'last_login_date' => now()->subDay()->toDateString(),
@@ -151,8 +166,23 @@ class DailyLoginRewardTest extends TestCase
 
         $reward = app(DailyLoginReward::class)->claim($user->fresh());
 
-        $this->assertSame(5, $reward['streak'], 'Login kemarin -> streak lanjut (4 -> 5).');
+        $this->assertSame(5, $reward['streak'], 'Riwayat 4 hari berturut sampai kemarin -> streak lanjut jadi 5.');
         $this->assertSame(5, (int) $user->fresh()->login_streak);
+    }
+
+    public function test_streak_tidak_percaya_last_login_date_tanpa_riwayat(): void
+    {
+        // Kolom last_login_date saja TIDAK cukup jadi bukti (inilah penyebab bug lama).
+        // Tanpa riwayat klaim, streak harus mulai dari 1 — jujur, bukan mengarang.
+        $user = $this->anggota();
+        $user->forceFill([
+            'login_streak'    => 11,
+            'last_login_date' => now()->subDay()->toDateString(),
+        ])->save();
+
+        $reward = app(DailyLoginReward::class)->claim($user->fresh());
+
+        $this->assertSame(1, $reward['streak'], 'Tanpa riwayat, streak mulai dari 1.');
     }
 
     public function test_streak_reset_kalau_bolong_sehari(): void
