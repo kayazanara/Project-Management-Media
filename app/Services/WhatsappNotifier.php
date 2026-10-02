@@ -79,8 +79,22 @@ class WhatsappNotifier
     /**
      * Jenis notifikasi yang cukup dikirim SEKALI untuk selamanya.
      * Reminder (H-3/H-1/overdue) & pemberitahuan project baru tidak perlu diulang.
+     *
+     * ⚡ Ditambah 2 Okt 2026:
+     *  - `project_approved`    → pesan ACC cukup SEKALI per project (permintaan Zev).
+     *    Dikirim hanya saat KEDUA pihak ACC; kalau project dibuka ulang (reopen),
+     *    catatan ini dihapus supaya ACC berikutnya tetap dikabari.
+     *  - `meeting_action_item` → satu tugas cukup dikabari sekali, walau rapatnya
+     *    disimpan/diubah berkali-kali (kuncinya memuat identitas tugasnya).
      */
-    public const TIPE_SEKALI = ['reminder_h3', 'reminder_h1', 'overdue', 'project_created'];
+    public const TIPE_SEKALI = [
+        'reminder_h3',
+        'reminder_h1',
+        'overdue',
+        'project_created',
+        'project_approved',
+        'meeting_action_item',
+    ];
 
     /**
      * Jendela anti-dobel (menit) untuk jenis KEJADIAN (rilis, ACC, revisi, reopen, dst).
@@ -91,6 +105,18 @@ class WhatsappNotifier
      * (menahan klik dobel), sedangkan yang berulang tetap boleh terkirim.
      */
     public const ANTI_DOBEL_MENIT = 30;
+
+    /**
+     * 🔁 Berapa lama percobaan yang GAGAL dianggap "bekas pengiriman" (menit).
+     *
+     * Sebabnya: gagal menurut kita (timeout / error HTTP) BELUM TENTU tidak terkirim —
+     * WhatsApp bisa saja sudah menerima pesannya. Kalau langsung dicoba lagi, orangnya
+     * menerima pesan yang sama dua kali. Jadi setelah gagal, kita tahan dulu 1 jam.
+     */
+    public const TAHAN_GAGAL_MENIT = 60;
+
+    /** Status baris log saat pesan sudah dicadangkan tapi belum dikirim. */
+    public const STATUS_CADANGAN = 'pending';
 
     /**
      * Berapa menit jendela anti-dobel untuk sebuah jenis? null = permanen (sekali saja).
@@ -135,50 +161,101 @@ class WhatsappNotifier
         });
     }
 
-    public function sendAndLog(User $user, ?int $projectId, string $type, string $message): bool
-    {
+    /**
+     * 🔁 SIAPKAN pengiriman: cek anti-dobel + CADANGKAN baris log SEBELUM dikirim.
+     *
+     * Kenapa dicadangkan lebih dulu: keputusan anti-dobel harus terjadi saat aksi
+     * dijalankan, bukan saat pesannya benar-benar dikirim (pengiriman ditunda sampai
+     * halaman pindah). Kalau tidak, dua permintaan cepat (klik dobel / browser
+     * mengirim ulang) bisa sama-sama lolos dan mengirim pesan yang sama dua kali.
+     *
+     * @return array{user:User,message:string,log:NotificationLog}|null  null = dilewati
+     */
+    public function siapkan(
+        User $user,
+        ?int $projectId,
+        string $type,
+        string $message,
+        ?string $kunci = null
+    ): ?array {
         if (! $this->enabled()) {
             Log::warning("Notifikasi WA dilewati (WAHA nonaktif): {$type} user={$user->id}");
 
-            return false;
+            return null;
         }
 
         if (empty($user->phone)) {
             Log::warning("User {$user->id} tidak punya nomor WA");
-            return false;
+
+            return null;
         }
 
-        if ($projectId) {
-            // Notifikasi ber-project: dicek per (jenis, project, user)
-            $jendela = self::jendelaDedupe($type);
+        $jendela = self::jendelaDedupe($type);
 
-            if (NotificationLog::alreadySent($type, $projectId, $user->id, $jendela)) {
-                Log::info("Skip duplikat notif: {$type} project={$projectId} user={$user->id}"
+        // Notifikasi ber-project ATAU berkunci: dicek per (jenis, project/kunci, NOMOR)
+        if ($kunci !== null || $projectId) {
+            if (NotificationLog::bekasPengiriman($type, $projectId, $user->phone, $jendela, $kunci, self::TAHAN_GAGAL_MENIT)) {
+                Log::info("Skip duplikat notif: {$type} project=" . ($projectId ?? '-') . " nomor={$user->phone}"
                     . ($jendela === null ? ' (sekali saja)' : " (dalam {$jendela} menit)"));
-                return true;
+
+                return null;
             }
         } elseif (NotificationLog::pesanSamaSudahTerkirim($type, $user->id, $message)) {
-            // Notifikasi tanpa project (mis. rapat & action item): dicek dari PESAN yang persis
-            // sama, supaya simpan-ulang/publish-ulang rapat tidak mengirim pesan yang sama lagi,
-            // tapi pesan yang isinya BERUBAH tetap terkirim.
+            // Notifikasi tanpa project & tanpa kunci (cadangan lama): dicek dari PESAN
+            // yang persis sama supaya simpan-ulang tidak mengirim pesan yang sama lagi.
             Log::info("Skip notif identik (tanpa project): {$type} user={$user->id}");
-            return true;
+
+            return null;
         }
 
-        $result = $this->send($user->phone, $message);
-
-        NotificationLog::create([
-            'user_id' => $user->id,
+        $log = NotificationLog::create([
+            'user_id'    => $user->id,
             'project_id' => $projectId,
-            'type' => $type,
-            'phone' => $user->phone,
-            'message' => $message,
-            'status' => $result['success'] ? 'sent' : 'failed',
-            'response' => json_encode($result['response']),
-            'sent_at' => $result['success'] ? now() : null,
+            'type'       => $type,
+            'dedupe_key' => $kunci,
+            'phone'      => $user->phone,
+            'message'    => $message,
+            'status'     => self::STATUS_CADANGAN,
+            'sent_at'    => null,
         ]);
 
+        return ['user' => $user, 'message' => $message, 'log' => $log];
+    }
+
+    /**
+     * Kirim pesan yang sudah dicadangkan `siapkan()`, lalu perbarui status barisnya.
+     */
+    public function kirim(array $siap): bool
+    {
+        /** @var NotificationLog $log */
+        $log    = $siap['log'];
+        $user   = $siap['user'];
+        $result = $this->send($user->phone, $siap['message']);
+
+        $log->update([
+            'status'   => $result['success'] ? 'sent' : 'failed',
+            'response' => json_encode($result['response']),
+            'sent_at'  => $result['success'] ? now() : null,
+        ]);
+
+        if ($result['success']) {
+            Log::info("✅ WA terkirim: {$log->type} ke {$user->name} ({$user->phone})");
+        } else {
+            Log::warning("❌ WA gagal: {$log->type} ke {$user->name} ({$user->phone}): {$result['message']}");
+        }
+
         return $result['success'];
+    }
+
+    /**
+     * Siapkan + kirim sekarang juga.
+     * Dipakai perintah/command (mis. `reminders:send`) dan sebagai jalur cadangan.
+     */
+    public function sendAndLog(User $user, ?int $projectId, string $type, string $message, ?string $kunci = null): bool
+    {
+        $siap = $this->siapkan($user, $projectId, $type, $message, $kunci);
+
+        return $siap ? $this->kirim($siap) : false;
     }
 
     // ============================================================

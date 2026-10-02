@@ -11,6 +11,32 @@ dan **tes** yang menjaganya.
 
 ## 2 Oktober 2026
 
+### 0. Pesan WA dobel — 4 celah ditutup (`…`)
+- **Gejala:** "kenapa di notifikasi WA banyak pesan duplikat?"
+- **Catatan jujur:** log di laptop berisi data DEMO dan **tidak menunjukkan duplikat**,
+  jadi penyebab pasti di server belum bisa ditentukan dari situ. Yang bisa dilakukan:
+  membaca kode lalu menutup **setiap celah yang memungkinkan** pesan terkirim dua kali.
+- **Dugaan pertama yang SALAH (dikoreksi):** semula kusangka pesan ACC terkirim setiap kali
+  ada pihak yang menyetujui. Setelah kode dibaca, ternyata pesan ACC **hanya dikirim saat
+  KEDUA pihak sudah ACC** — jadi bukan itu penyebabnya.
+- **Empat celah yang ditemukan & ditutup:**
+  1. Percobaan **gagal** (timeout) dianggap belum terkirim, padahal bisa saja sudah sampai →
+     dikirim lagi. Sekarang baris `failed` tetap dianggap bekas pengiriman selama **1 jam**.
+  2. Anti-dobel per **akun**, bukan per **nomor** → dua akun bernomor sama menerima 2 pesan.
+     Sekarang pemeriksaan memakai nomor.
+  3. Pesan rapat/action item dicek dari teks persis → judul rapat diubah = tugas yang sama
+     dikirim ulang. Sekarang memakai **kunci per tugas** (`notification_logs.dedupe_key`).
+  4. Pengiriman ditunda sesudah respons → keputusan anti-dobel terjadi saat kirim, dua
+     permintaan cepat bisa sama-sama lolos. Sekarang baris **dicadangkan** dulu
+     (status `pending`) lewat `siapkan()`, baru dikirim lewat `kirim()`.
+- **Tambahan:** pesan ACC = sekali per project (sesuai permintaan), dan **reopen menghapus
+  catatan ACC lama** supaya ACC setelah dibuka ulang tetap dikabari (tidak hilang diam-diam).
+- **Alat diagnosa:** `php artisan notif:cek-duplikat` (hanya baca) untuk dijalankan di server.
+- **Tes:** `NotifikasiDobelTest` (9 tes) — 4 di antaranya **gagal dulu** sebelum diperbaiki.
+- **Pelajaran tes:** dua tes pertama versi awalku **lolos secara palsu** karena `publish()`
+  menolak rapat yang sudah dipublikasikan (jadi percobaan kedua tidak menjalankan kode sama
+  sekali). Tes sekarang membatalkan status ke `draft` dulu supaya benar-benar memicu ulang.
+
 ### 1. Streak login mandek di 1 (`d15c6b1`)
 - **Gejala:** "streak-nya stuck di 1 terus". Poin 2/hari tetap masuk, jadi tidak kelihatan.
 - **Reproduksi:** login 5 hari berturut-turut lewat jalur login asli → streak tetap 1.

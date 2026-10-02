@@ -27,6 +27,7 @@ Jumlah saat dokumen ini ditulis: **190 tes / 766 assertions**, semuanya lulus.
 | `WorkdeskTrendTest` (8) | ⚡ Tren = jumlah task selesai **per hari**, bisa naik-turun, abaikan anggota non-aktif, dipisah per divisi, ikut filter hari, tidak membanjiri query |
 | `WorkdeskPerformaDivisiTest` (10) | ⚡ Performa divisi: ikut filter hari, tren apple-to-apple, naik dari nol = "baru", tanpa data = `—`, bobot kosong tidak menekan skor |
 | `NotifikasiWaTest` (12) | Penerima tiap jalur (termasuk yang **tidak boleh** menerima), anti-dobel, kejadian berulang tetap terkirim, job mati sudah dihapus |
+| `NotifikasiDobelTest` (9) | ⚡ Pesan dobel: cadangan sebelum kirim (klik dobel), gagal ditahan 1 jam, satu nomor dua akun, rapat disimpan ulang, ACC sekali per project + reset saat reopen, dan penjaga anti-anti-dobel-berlebihan |
 | `StreakLoginTest` (7) | ⚡ Bug streak: 5 hari berturut = streak 5, bolong = reset, data lama dihitung ulang, perintah artisan, tidak dobel sehari |
 | `DailyLoginRewardTest` | Bonus 2 poin, sekali sehari, riwayat, tampil di total poin |
 | `ContentStockTest` | Stok konten, bahan raw, activity, ambil/lepas |

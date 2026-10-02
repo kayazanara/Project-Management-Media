@@ -319,17 +319,33 @@ class MeetingController extends Controller
         $waktu    = substr($meeting->start_time, 0, 5) . ' - ' . substr($meeting->end_time, 0, 5);
 
         // ⚡ PERF: dikirim setelah halaman pindah, supaya publikasi rapat tidak menunggu WA
-        WhatsappNotifier::kirimSetelahResponse(function () use ($recipients, $notifier, $meeting, $waktu) {
-            foreach ($recipients as $user) {
-                $message = $notifier->meetingPublishedTemplate(
-                    $user->name,
-                    $meeting->title,
-                    $meeting->date_formatted,
-                    $waktu,
-                    $meeting->location ?? '-',
-                    $meeting->id
-                );
-                $notifier->sendAndLog($user, null, 'meeting_published', $message);
+        // ⚡ ANTI-DOBEL: kunci per rapat -> publikasi berulang dalam 30 menit tidak dobel
+        $antre = [];
+
+        foreach ($recipients as $user) {
+            $message = $notifier->meetingPublishedTemplate(
+                $user->name,
+                $meeting->title,
+                $meeting->date_formatted,
+                $waktu,
+                $meeting->location ?? '-',
+                $meeting->id
+            );
+
+            $siap = $notifier->siapkan($user, null, 'meeting_published', $message, "rapat:{$meeting->id}");
+
+            if ($siap) {
+                $antre[] = $siap;
+            }
+        }
+
+        if ($antre === []) {
+            return;
+        }
+
+        WhatsappNotifier::kirimSetelahResponse(function () use ($notifier, $antre) {
+            foreach ($antre as $siap) {
+                $notifier->kirim($siap);
             }
         });
     }
@@ -353,22 +369,43 @@ class MeetingController extends Controller
         $notifier = app(WhatsappNotifier::class);
 
         // ⚡ PERF: dikirim setelah halaman pindah
-        WhatsappNotifier::kirimSetelahResponse(function () use ($items, $users, $notifier, $meeting) {
-            foreach ($items as $item) {
-                $uid = $item['assigned_to'] ?? null;
-                if (! $uid || ! isset($users[$uid])) {
-                    continue;
-                }
+        // ⚡ ANTI-DOBEL (2 Okt 2026): kunci memuat identitas TUGAS-nya, jadi tugas yang sama
+        // tidak dikirim ulang walau rapatnya disimpan/diubah berkali-kali; tugas yang
+        // berbeda tetap dikabari masing-masing.
+        $antre = [];
 
-                $user    = $users[$uid];
-                $message = $notifier->meetingActionItemTemplate(
-                    $user->name,
-                    $meeting->title,
-                    $item['task'] ?? '-',
-                    $item['deadline'] ?? '-',
-                    $meeting->id
-                );
-                $notifier->sendAndLog($user, null, 'meeting_action_item', $message);
+        foreach ($items as $item) {
+            $uid = $item['assigned_to'] ?? null;
+            if (! $uid || ! isset($users[$uid])) {
+                continue;
+            }
+
+            $user  = $users[$uid];
+            $tugas = $item['task'] ?? '-';
+            $kunci = "rapat:{$meeting->id}:tugas:" . md5($tugas . '|' . ($item['deadline'] ?? '-'));
+
+            $message = $notifier->meetingActionItemTemplate(
+                $user->name,
+                $meeting->title,
+                $tugas,
+                $item['deadline'] ?? '-',
+                $meeting->id
+            );
+
+            $siap = $notifier->siapkan($user, null, 'meeting_action_item', $message, $kunci);
+
+            if ($siap) {
+                $antre[] = $siap;
+            }
+        }
+
+        if ($antre === []) {
+            return;
+        }
+
+        WhatsappNotifier::kirimSetelahResponse(function () use ($notifier, $antre) {
+            foreach ($antre as $siap) {
+                $notifier->kirim($siap);
             }
         });
     }

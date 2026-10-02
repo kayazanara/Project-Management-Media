@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\ProjectTask;
 use App\Models\ProjectRevision;
 use App\Models\Content;
+use App\Models\NotificationLog;
 use App\Events\ProjectCreated;
 use App\Services\ProjectWorkflowService;
 use App\Services\WhatsappNotifier;
@@ -44,21 +45,45 @@ class ProjectController extends Controller
 
     private function notifyUsers($users, string $type, ?int $projectId, callable $buildMessage): void
     {
-        // ⚡ PERF: pengiriman ditunda sampai SETELAH halaman dikirim ke pengguna, supaya
-        // tombol review/approve/rilis tidak ikut menunggu balasan WAHA (dulu bisa 9+
-        // detik untuk 6 penerima). Lihat WhatsappNotifier::kirimSetelahResponse().
         $daftarPenerima = collect($users)->values()->all();
+        $antre          = [];
 
-        WhatsappNotifier::kirimSetelahResponse(function () use ($daftarPenerima, $type, $projectId, $buildMessage) {
-            foreach ($daftarPenerima as $user) {
-                if (empty($user->phone)) {
-                    continue;
-                }
+        // ⚡ LANGKAH 1 (dikerjakan SEKARANG, saat aksi dijalankan): cek anti-dobel +
+        // cadangkan baris log. Ini yang menahan klik dobel / browser mengirim ulang —
+        // kalau pemeriksaan baru dilakukan saat pengiriman (yang ditunda sampai halaman
+        // pindah), dua permintaan cepat bisa sama-sama lolos dan mengirim pesan dobel.
+        foreach ($daftarPenerima as $user) {
+            if (empty($user->phone)) {
+                continue;
+            }
+
+            try {
+                $message = $buildMessage($this->notifier, $user);
+            } catch (\Throwable $e) {
+                Log::warning("[Workflow Notif] Gagal menyusun pesan {$type} untuk user {$user->id}: {$e->getMessage()}");
+                continue;
+            }
+
+            $siap = $this->notifier->siapkan($user, $projectId, $type, $message);
+
+            if ($siap) {
+                $antre[] = $siap;
+            }
+        }
+
+        if ($antre === []) {
+            return;
+        }
+
+        // ⚡ LANGKAH 2 (dikerjakan SETELAH halaman pindah): kirim sungguhan, supaya
+        // tombol review/approve/rilis tidak ikut menunggu balasan WAHA (dulu bisa
+        // 9+ detik untuk 6 penerima). Lihat WhatsappNotifier::kirimSetelahResponse().
+        WhatsappNotifier::kirimSetelahResponse(function () use ($antre, $type) {
+            foreach ($antre as $siap) {
                 try {
-                    $message = $buildMessage($this->notifier, $user);
-                    $this->notifier->sendAndLog($user, $projectId, $type, $message);
+                    $this->notifier->kirim($siap);
                 } catch (\Throwable $e) {
-                    Log::warning("[Workflow Notif] Gagal kirim {$type} ke user {$user->id}: {$e->getMessage()}");
+                    Log::warning("[Workflow Notif] Gagal kirim {$type} ke user {$siap['user']->id}: {$e->getMessage()}");
                 }
             }
         });
@@ -1015,6 +1040,14 @@ class ProjectController extends Controller
         }
 
         $project->update($updateData);
+
+        // 🔁 RESET CATATAN ACC (2 Okt 2026): pesan "project disetujui" hanya dikirim SEKALI
+        // per project (permintaan Zev). Karena project ini dibuka ulang, jalur ACC-nya akan
+        // diulang dari awal — jadi catatan lama dihapus supaya ACC berikutnya TETAP dikabari
+        // (kalau tidak dihapus, pesan ACC kedua hilang diam-diam).
+        NotificationLog::where('project_id', $project->id)
+            ->where('type', 'project_approved')
+            ->delete();
 
         $recipients = $this->getProjectRecipients($project, $user->id);
 

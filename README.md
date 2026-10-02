@@ -71,6 +71,7 @@ Tekan **Ctrl+Shift+R** di browser sesudahnya (file CSS/JS lama sering tersimpan 
 | `php artisan db:backup` | Backup DB (aman walau aplikasi sedang dipakai) |
 | `php artisan reminders:send` | Kirim reminder WhatsApp H-3, H-1, dan lewat deadline (otomatis tiap hari 08:00) |
 | `php artisan login:hitung-ulang-streak` | Hitung ulang streak login dari riwayat (opsi `--user=email`) |
+| `php artisan notif:cek-duplikat` | Periksa kemungkinan pesan WA dobel (**hanya baca**, aman di server; opsi `--hari=30`) |
 | `php artisan login:reset-reward tes.animasi@test.com` | Untuk uji: hapus bonus login hari ini supaya animasi bisa dilihat lagi |
 | `php artisan simulate:workflow` | Simulasi 9 tahap workflow (dry-run, otomatis dibatalkan) |
 | `php artisan test` | Jalankan semua tes |

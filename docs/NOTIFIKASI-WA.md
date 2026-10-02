@@ -43,18 +43,41 @@ Aturan yang berlaku di semua jalur:
 3. **Pelaku aksi tidak dikirimi** pesannya sendiri.
 4. Pengguna tanpa nomor telepon dilewati (dicatat di log).
 
-## 3. Aturan anti-dobel (penentu di `WhatsappNotifier`)
+## 3. Aturan anti-dobel (penentu di `WhatsappNotifier` + `NotificationLog`)
 
 | Jenis | Aturan |
 |---|---|
-| `reminder_h3`, `reminder_h1`, `overdue`, `project_created` (const `TIPE_SEKALI`) | Sekali seumur project — tidak diulang |
-| Kejadian lain (rilis, ACC, revisi, selesai, dll) | Anti-dobel **30 menit** (const `ANTI_DOBEL_MENIT`) |
+| `reminder_h3`, `reminder_h1`, `overdue`, `project_created`, `project_approved`, `meeting_action_item` (const `TIPE_SEKALI`) | Sekali saja — tidak diulang |
+| Kejadian lain (rilis, revisi, selesai, dll) | Anti-dobel **30 menit** (const `ANTI_DOBEL_MENIT`) |
 
 Kenapa dibedakan: revisi kedua atau reopen kedua **harus tetap terkirim**, sedangkan
 reminder harian tidak boleh diulang setiap kali scheduler jalan.
 
-Kalau pesan tidak punya `project_id` (mis. notulen rapat), anti-dobel memakai
-`pesanSamaSudahTerkirim()` — membandingkan isi pesan identik.
+### 3.1 Empat cara dobel yang sudah ditutup (2 Okt 2026)
+
+| # | Celah | Penutupnya |
+|---|---|---|
+| 1 | Percobaan **gagal** (timeout) dianggap "belum terkirim", padahal WhatsApp bisa saja sudah menerimanya → dicoba lagi → orangnya dapat 2 pesan | Baris `failed` tetap dianggap **bekas pengiriman selama 1 jam** (const `TAHAN_GAGAL_MENIT`). Sesudah 1 jam baru boleh dicoba lagi, supaya pesan yang benar-benar gagal tidak hilang |
+| 2 | Anti-dobel dihitung per **akun**, bukan per **nomor** → dua akun dengan nomor sama = 2 pesan | Pemeriksaan memakai **nomor** (`phone`), bukan `user_id` |
+| 3 | Pesan rapat/action item dicek dari **teks yang persis sama** → judul rapat diubah = pesan tugas yang sama dikirim lagi | Memakai **kunci** (`dedupe_key`): satu tugas = satu kunci, jadi tidak terkirim ulang walau rapatnya disimpan berkali-kali; tugas berbeda tetap terkirim |
+| 4 | Pengiriman ditunda sesudah respons, sehingga keputusan anti-dobel terjadi **saat kirim** → dua permintaan cepat bisa sama-sama lolos | Baris log **dicadangkan lebih dulu** dengan status `pending` saat aksi dijalankan (`siapkan()`), baru dikirim (`kirim()`). Status akhirnya `sent` atau `failed` |
+
+Pesan **ACC** dikirim **sekali per project** (saat kedua pihak sudah ACC). Kalau project
+**dibuka ulang (reopen)**, catatan ACC lama dihapus supaya ACC berikutnya tetap dikabari.
+
+### 3.2 Perintah pemeriksa
+
+```bash
+php artisan notif:cek-duplikat              # 14 hari terakhir
+php artisan notif:cek-duplikat --hari=30    # 30 hari terakhir
+```
+
+Hanya membaca (tidak mengubah data) dan menampilkan: ringkasan per jenis, kiriman berulang
+per project/akun, satu nomor menerima pesan identik, "gagal padahal sudah terkirim",
+pengiriman beruntun dalam satu menit, jumlah per hari, dan baris `pending` yang menggantung.
+
+Catatan: pengiriman beruntun dalam satu menit **belum tentu dobel** — bisa jadi orang itu
+memang terlibat di beberapa project yang jatuh tempo bersamaan.
 
 ## 4. Dikirim SETELAH halaman pindah (perbaikan kecepatan)
 

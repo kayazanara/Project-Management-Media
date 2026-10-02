@@ -520,27 +520,45 @@ class ContentController extends Controller
             ->where('phone', '!=', '')
             ->get();
 
-        // ⚡ PERF: dikirim setelah halaman pindah (tidak menahan proses upload)
-        WhatsappNotifier::kirimSetelahResponse(function () use ($targetUsers, $user, $project, $request, $content) {
-            foreach ($targetUsers as $u) {
-                if ($u->id === $user->id) {
-                    continue;
-                }
-                try {
-                    $msg = $this->notifier->rawUploadedTemplate(
-                        $u->name,
-                        $project->name,
-                        $user->name,
-                        $request->title,
-                        $request->target_division,
-                        $content->id
-                    );
-                    $this->notifier->sendAndLog($u, $project->id, 'raw_uploaded', $msg);
-                } catch (\Throwable $e) {
-                    Log::warning("[Upload Raw] Gagal notif ke user {$u->id}: {$e->getMessage()}");
-                }
+        // ⚡ ANTI-DOBEL: disiapkan SEKARANG (cek dobel + cadangkan), dikirim setelah halaman pindah
+        $antre = [];
+
+        foreach ($targetUsers as $u) {
+            if ($u->id === $user->id) {
+                continue;
             }
-        });
+
+            try {
+                $msg = $this->notifier->rawUploadedTemplate(
+                    $u->name,
+                    $project->name,
+                    $user->name,
+                    $request->title,
+                    $request->target_division,
+                    $content->id
+                );
+
+                $siap = $this->notifier->siapkan($u, $project->id, 'raw_uploaded', $msg);
+
+                if ($siap) {
+                    $antre[] = $siap;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[Upload Raw] Gagal menyiapkan notif ke user {$u->id}: {$e->getMessage()}");
+            }
+        }
+
+        if ($antre !== []) {
+            WhatsappNotifier::kirimSetelahResponse(function () use ($antre) {
+                foreach ($antre as $siap) {
+                    try {
+                        $this->notifier->kirim($siap);
+                    } catch (\Throwable $e) {
+                        Log::warning("[Upload Raw] Gagal kirim notif ke user {$siap['user']->id}: {$e->getMessage()}");
+                    }
+                }
+            });
+        }
 
         return redirect()
             ->to($this->getRedirectAfterActivity($user))
@@ -614,34 +632,52 @@ class ContentController extends Controller
         $totalCount = count($createdContents);
         $firstContent = $createdContents[0];
 
-        // ⚡ PERF: dikirim setelah halaman pindah
-        WhatsappNotifier::kirimSetelahResponse(function () use ($broadcastUsers, $user, $totalCount, $firstContent, $project) {
-            foreach ($broadcastUsers as $u) {
-                if ($u->id === $user->id) {
-                    continue;
-                }
-                try {
-                    $codeLabel = $totalCount > 1
-                        ? $firstContent->content_code . ' (+' . ($totalCount - 1) . ' lainnya)'
-                        : $firstContent->content_code;
+        // ⚡ ANTI-DOBEL: disiapkan SEKARANG, dikirim setelah halaman pindah
+        $antre = [];
 
-                    $titleLabel = $totalCount > 1
-                        ? $firstContent->title . ' dll'
-                        : $firstContent->title;
-
-                    $msg = $this->notifier->stockUploadedTemplate(
-                        $u->name,
-                        $codeLabel,
-                        $titleLabel,
-                        $project->name ?? '-',
-                        $firstContent->id
-                    );
-                    $this->notifier->sendAndLog($u, $project->id, 'stock_uploaded', $msg);
-                } catch (\Throwable $e) {
-                    Log::warning("[Upload Stock] Gagal notif ke user {$u->id}: {$e->getMessage()}");
-                }
+        foreach ($broadcastUsers as $u) {
+            if ($u->id === $user->id) {
+                continue;
             }
-        });
+
+            try {
+                $codeLabel = $totalCount > 1
+                    ? $firstContent->content_code . ' (+' . ($totalCount - 1) . ' lainnya)'
+                    : $firstContent->content_code;
+
+                $titleLabel = $totalCount > 1
+                    ? $firstContent->title . ' dll'
+                    : $firstContent->title;
+
+                $msg = $this->notifier->stockUploadedTemplate(
+                    $u->name,
+                    $codeLabel,
+                    $titleLabel,
+                    $project->name ?? '-',
+                    $firstContent->id
+                );
+
+                $siap = $this->notifier->siapkan($u, $project->id, 'stock_uploaded', $msg);
+
+                if ($siap) {
+                    $antre[] = $siap;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[Upload Stock] Gagal menyiapkan notif ke user {$u->id}: {$e->getMessage()}");
+            }
+        }
+
+        if ($antre !== []) {
+            WhatsappNotifier::kirimSetelahResponse(function () use ($antre) {
+                foreach ($antre as $siap) {
+                    try {
+                        $this->notifier->kirim($siap);
+                    } catch (\Throwable $e) {
+                        Log::warning("[Upload Stock] Gagal kirim notif ke user {$siap['user']->id}: {$e->getMessage()}");
+                    }
+                }
+            });
+        }
 
         return redirect()
             ->to($this->getRedirectAfterActivity($user))

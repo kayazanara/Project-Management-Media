@@ -101,6 +101,10 @@ membuat bug nyata** di proyek ini.
 | 14 | Membuat beberapa anggota uji dengan email sama di tes | Tes mengubah penerima yang sama → hasil menipu | Pastikan email unik per anggota |
 | 15 | Mengklaim "sudah diperbaiki" tanpa menjalankan tes | Bug baru ketahuan belakangan | Jalankan `php artisan test` dan uji nyata di browser |
 
+| 16 | Tes "lolos" karena kode yang diuji tidak benar-benar berjalan (mis. `publish()` menolak rapat yang sudah published → percobaan kedua tidak terjadi) | Tes terlihat hijau tapi tidak menjaga apa pun | Pastikan jalur yang diuji benar-benar memicu kode — cek status prasyaratnya (dan buktikan tesnya GAGAL dulu) |
+| 17 | Anti-dobel yang terlalu ketat | Pesan yang seharusnya terkirim malah hilang diam-diam | Sediakan selalu tes "penjaga" yang memastikan pesan berbeda/berulang TETAP terkirim |
+| 18 | Menganggap "gagal kirim" = "tidak sampai" | Pesan yang timeout lalu dicoba ulang → orangnya menerima 2 pesan | Setelah gagal, tahan dulu (1 jam) sebelum mencoba lagi |
+
 ## I. Gaya penulisan kode di proyek ini
 
 - Komentar & penamaan boleh Bahasa Indonesia (memang begitu sejak awal).

@@ -10,6 +10,7 @@ class NotificationLog extends Model
         'user_id',
         'project_id',
         'type',
+        'dedupe_key',
         'phone',
         'message',
         'status',
@@ -29,6 +30,53 @@ class NotificationLog extends Model
     public function project()
     {
         return $this->belongsTo(Project::class);
+    }
+
+    /**
+     * 🔁 INTI ANTI-DOBEL (diperbaiki 2 Okt 2026).
+     *
+     * Dianggap "sudah pernah dikirim" kalau ada baris yang cocok pada salah satu kondisi:
+     *   1. status `sent`   (sudah benar-benar terkirim) — dalam jendela waktu bila ditentukan
+     *   2. status `pending` (sedang dalam proses) — mencegah klik dobel / dua permintaan cepat
+     *   3. status `failed` yang MASIH BARU (< $tahanGagalMenit) — karena gagal (timeout)
+     *      belum tentu tidak terkirim: WhatsApp bisa saja sudah menerima pesannya
+     *
+     * Penocokan memakai NOMOR (`phone`), bukan akun, supaya dua akun dengan nomor yang
+     * sama tidak menerima pesan yang sama dua kali.
+     *
+     * @param string|null $kunci  kunci khusus (mis. "rapat:12:tugas:abc") — kalau diisi,
+     *                            dipakai menggantikan project_id
+     */
+    public static function bekasPengiriman(
+        string $type,
+        ?int $projectId,
+        string $phone,
+        ?int $menitTerakhir = null,
+        ?string $kunci = null,
+        int $tahanGagalMenit = 60
+    ): bool {
+        $query = static::where('type', $type)->where('phone', $phone);
+
+        if ($kunci !== null) {
+            $query->where('dedupe_key', $kunci);
+        } else {
+            $query->where('project_id', $projectId);
+        }
+
+        return $query->where(function ($w) use ($menitTerakhir, $tahanGagalMenit) {
+            $w->where(function ($s) use ($menitTerakhir) {
+                $s->where('status', 'sent');
+
+                if ($menitTerakhir !== null) {
+                    $s->where('created_at', '>=', now()->subMinutes($menitTerakhir));
+                }
+            })
+            ->orWhere('status', 'pending')
+            ->orWhere(function ($f) use ($tahanGagalMenit) {
+                $f->where('status', 'failed')
+                  ->where('created_at', '>=', now()->subMinutes($tahanGagalMenit));
+            });
+        })->exists();
     }
 
     // Helper: cek apakah notifikasi tipe X untuk project Y ke user Z sudah pernah dikirim
