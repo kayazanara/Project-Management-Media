@@ -11,7 +11,7 @@ dan **tes** yang menjaganya.
 
 ## 2 Oktober 2026
 
-### 0. Pesan WA dobel — 4 celah ditutup (`…`)
+### 0. Pesan WA dobel — 4 celah ditutup (`3013da8`)
 - **Gejala:** "kenapa di notifikasi WA banyak pesan duplikat?"
 - **Catatan jujur:** log di laptop berisi data DEMO dan **tidak menunjukkan duplikat**,
   jadi penyebab pasti di server belum bisa ditentukan dari situ. Yang bisa dilakukan:
